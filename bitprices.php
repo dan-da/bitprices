@@ -18,7 +18,7 @@ define( 'SATOSHI', 100000000 );
 function main( $argv ) {
     ini_set('memory_limit', -1 );
 
-    $worker = new btc_usd_history();
+    $worker = new bitprices();
     try {
         return $worker->run( $argv );
     }
@@ -32,7 +32,7 @@ function main( $argv ) {
 exit( main( $argv ) );
 
 
-class btc_usd_history {
+class bitprices {
     
     public function run( $argv ) {
         $params = $this->get_params();
@@ -131,7 +131,7 @@ class btc_usd_history {
  
         $buf = <<< END
 
-   btc_usd_history.php
+   bitprices.php
 
    This script generates a report of transactions with the USD value
    at the time of each transaction.
@@ -151,7 +151,7 @@ class btc_usd_history {
     --currency=<curr>    symbol supported by bitcoinaverage.com.  default = USD.
     
     --cols=<cols>        default=date,time,addrshort,btcin,btcout,btcbalance
-                                 fiatin,fiatout,fiatprice
+                                 fiatin,fiatout,fiatbalance,fiatprice
                          others=address,tx,txshort
                                 btcbalanceperiod,fiatbalanceperiod
                                 
