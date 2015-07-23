@@ -62,6 +62,18 @@ number of transactions is small, making it a good size for an example.
 
 http://www.theopenledger.com/9-most-famous-bitcoin-addresses/
 
+# A note about Fiat Columns
+
+The columns "USD In", "USD Out" and "USD Balance" are based on the price at the
+time of each transaction.  So these amounts are typically very different than
+they would be if each transaction were valued at today's exchange rate.
+
+The USD Balance column provides a good picture of net income valued in dollars
+and unaffected by exchange rate fluctuations.
+
+note: The actual column names will vary by currency, eg "EUR Balance" for Euros.
+
+
 # Output formats
 
 The report may be printed in the following formats:
