@@ -474,10 +474,10 @@ END;
     
     static public function write_results_csv( $fh, $results ) {
         if( @$results[0] ) {
-            fputcsv( $fh, array_keys( $formatted[0] ) );
+            fputcsv( $fh, array_keys( $results[0] ) );
         }
         
-        foreach( $formatted as $row ) {
+        foreach( $results as $row ) {
             fputcsv( $fh, $row );
         }
     }
