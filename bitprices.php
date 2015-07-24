@@ -23,7 +23,7 @@ function main( $argv ) {
         return $worker->run( $argv );
     }
     catch( Exception $e ) {
-        echo "\n" . mylogger()->exception_to_string( $e ) . "\n";
+        mylogger()->log_exception( $e );
         //$worker->print_help();
         return 1;
     }
@@ -59,7 +59,7 @@ class bitprices {
                                       'addresses:', 'addressfile:',
                                       'direction:', 'currency:',
                                       'cols:', 'outfile:',
-                                      'format:',
+                                      'format:', 'logfile:'
                                       ) );
         
         if( !isset($params['g']) ) {
@@ -69,6 +69,11 @@ class bitprices {
         if( !@$params['addresses'] && !@$params['addressfile'] ) {
             $this->print_help();
             return false;
+        }
+        
+        if( @$params['logfile'] ) {
+            mylogger()->set_log_file( $params['logfile'] );
+            mylogger()->echo_log = false;
         }
         
         $params['direction'] = @$params['direction'] ?: 'both';
@@ -83,7 +88,7 @@ class bitprices {
         $params['currency'] = strtoupper( @$params['currency'] ) ?: 'USD';
         $params['cols'] = $this->get_cols( @$params['cols'] );
         
-        $params['format'] = @$params['format'] ?: 'plain';
+        $params['format'] = @$params['format'] ?: 'txt';
 
         return $params;
     }
@@ -156,7 +161,11 @@ class bitprices {
                                 btcbalanceperiod,fiatbalanceperiod
                                 
     --outfile=<file>     specify output file path.
-    --format=<format>    plain|csv|json|jsonpretty     default=plain
+    --format=<format>    txt|csv|json|jsonpretty|all     default=txt
+    
+                         if all is specified then a file will be created
+                         for each format with appropriate extension.
+                         only works when outfile is specified.
 
 
 END;
@@ -445,15 +454,35 @@ END;
     protected function print_results( $results ) {
         $params = $this->get_params();
         $outfile = @$params['outfile'];
+        $format = @$params['format'];
         
+        if( $outfile && $format == 'all' ) {
+            $formats = array( 'txt', 'csv', 'json', 'jsonpretty' );
+            
+            foreach( $formats as $format ) {
+                
+                $outfile = sprintf( '%s/%s.%s',
+                                    pathinfo($outfile, PATHINFO_DIRNAME),
+                                    pathinfo($outfile, PATHINFO_FILENAME),
+                                    $format );
+                
+                $this->print_results_worker( $results, $outfile, $format );
+            }
+        }
+        else {
+            $this->print_results_worker( $results, $outfile, $format );
+        }
+    }
+    
+    protected function print_results_worker( $results, $outfile, $format ) {
+
         $formatted = $this->format_results( $results );
-        $format = $params['format'];
         
         $fname = $outfile ?: 'php://stdout';
-        $fh = fopen( $fname, 'w' );       
+        $fh = fopen( $fname, 'w' );
 
         switch( $format ) {
-            case 'plain':  self::write_results_fixed_width( $fh, $formatted ); break;
+            case 'txt':  self::write_results_fixed_width( $fh, $formatted ); break;
             case 'csv':  self::write_results_csv( $fh, $formatted ); break;
             case 'json':  self::write_results_json( $fh, $formatted ); break;
             case 'jsonpretty':  self::write_results_jsonpretty( $fh, $formatted ); break;
@@ -474,10 +503,10 @@ END;
     
     static public function write_results_csv( $fh, $results ) {
         if( @$results[0] ) {
-            fputcsv( $fh, array_keys( $formatted[0] ) );
+            fputcsv( $fh, array_keys( $results[0] ) );
         }
         
-        foreach( $formatted as $row ) {
+        foreach( $results as $row ) {
             fputcsv( $fh, $row );
         }
     }
@@ -493,6 +522,7 @@ END;
 
 END;
             fwrite( $fh, $str );
+            return;
         }
 
         $obj_arr = function ( $t ) {
