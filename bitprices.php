@@ -25,8 +25,12 @@ function main( $argv ) {
     }
     catch( Exception $e ) {
         mylogger()->log_exception( $e );
-        //$worker->print_help();
-        return 1;
+        
+        // print validation errors to stderr.
+        if( $e->getCode() == 2 ) {
+            fprintf( STDERR, $e->getMessage() );
+        }
+        return $e->getCode() ?: 1;
     }
 }
 
@@ -111,7 +115,8 @@ class bitprices {
                 continue;
             }
             if( !AddressValidator::isValid( $addr ) ) {
-                throw new Exception( "Bitcoin address $addr is invalid" );
+                // code 2 means an input validation exception.
+                throw new Exception( "Bitcoin address $addr is invalid", 2 );
             }
         }
         if( !count( $list ) ) {
