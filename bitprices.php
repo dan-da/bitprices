@@ -5,6 +5,7 @@ require_once dirname(__FILE__) . '/lib/strict_mode.funcs.php';
 require_once dirname(__FILE__) . '/lib/mylogger.class.php';
 require_once dirname(__FILE__) . '/lib/mysqlutil.class.php';
 require_once dirname(__FILE__) . '/lib/httputil.class.php';
+require_once dirname(__FILE__) . '/lib/html_table.class.php';
 
 require_once dirname(__FILE__) . '/lib/validator/AddressValidator.php';
 use \LinusU\Bitcoin\AddressValidator;
@@ -161,7 +162,7 @@ class bitprices {
                                 btcbalanceperiod,fiatbalanceperiod
                                 
     --outfile=<file>     specify output file path.
-    --format=<format>    txt|csv|json|jsonpretty|all     default=txt
+    --format=<format>    txt|csv|json|jsonpretty|html|all     default=txt
     
                          if all is specified then a file will be created
                          for each format with appropriate extension.
@@ -387,10 +388,18 @@ END;
         return substr( $address, 0, 3 ) . '..' . substr( $address, -3 );
     }
     
-    protected function format_results( $results ) {
+    protected function format_results( $results, $format ) {
         
         $params = $this->get_params();
         $direction = $params['direction'];
+        
+        // This is an ugly hack so that html format will always include
+        // addressweb and txweb columns at the end.  For use in linking to block explorers.
+        $cols = $params['cols'];
+        if( $format == 'html' ) {
+            $cols[] = 'addressweb';
+            $cols[] = 'txweb';
+        }
         
         $cb = function($a, $b) { return $a['block_time'] == $b['block_time'] ? 0 : $a['block_time'] > $b['block_time'] ? 1 : -1; };
         usort( $results, $cb );
@@ -425,12 +434,13 @@ END;
                        
             $row = array();
             
-            foreach( $params['cols'] as $col ) {
+            foreach( $cols as $col ) {
                 switch( $col ) {
                     case 'date': $row[ucfirst($col)] = date('Y-m-d', $r['block_time'] ); break;
                     case 'time': $row[ucfirst($col)] = date('H:i:s', $r['block_time'] ); break;
                     case 'addrshort': $row['Addr Short'] = $this->shorten_addr( $r['addr'] ); break;
                     case 'address': $row['Address'] = $r['addr']; break;
+                    case 'addressweb': $row['AddressWeb'] = $r['addr']; break;
                     case 'btcin': $row['BTC In'] = $this->btc_display( $r['amount_in'] ); break;
                     case 'btcout': $row['BTC Out'] = $this->btc_display( $r['amount_out'] ); break;
                     case 'btcbalance': $row['BTC Balance'] = $this->btc_display( $btc_balance ); break;
@@ -442,6 +452,7 @@ END;
                     case 'fiatprice': $row[$fc . ' Price'] = $this->fiat_display( $r['exchange_rate'] ); break;
                     case 'txshort': $row['Tx Short'] = $this->shorten_addr( $r['txid'] ); break;
                     case 'tx': $row['Tx'] = $r['txid']; break;
+                    case 'txweb': $row['TxWeb'] = $r['txid']; break;
                 }
             }
             $nr[] = $row;
@@ -457,7 +468,7 @@ END;
         $format = @$params['format'];
         
         if( $outfile && $format == 'all' ) {
-            $formats = array( 'txt', 'csv', 'json', 'jsonpretty' );
+            $formats = array( 'txt', 'csv', 'json', 'jsonpretty', 'html' );
             
             foreach( $formats as $format ) {
                 
@@ -476,7 +487,7 @@ END;
     
     protected function print_results_worker( $results, $outfile, $format ) {
 
-        $formatted = $this->format_results( $results );
+        $formatted = $this->format_results( $results, $format );
         
         $fname = $outfile ?: 'php://stdout';
         $fh = fopen( $fname, 'w' );
@@ -485,6 +496,7 @@ END;
             case 'txt':  self::write_results_fixed_width( $fh, $formatted ); break;
             case 'csv':  self::write_results_csv( $fh, $formatted ); break;
             case 'json':  self::write_results_json( $fh, $formatted ); break;
+            case 'html':  self::write_results_html( $fh, $formatted ); break;
             case 'jsonpretty':  self::write_results_jsonpretty( $fh, $formatted ); break;
         }
 
@@ -511,6 +523,44 @@ END;
         }
     }
 
+    static public function write_results_html( $fh, $results ) {
+        
+        foreach( $results as &$row ) {
+            
+            $addr_url = sprintf( 'http://blockchain.info/address/%s', $row['AddressWeb'] );
+            $tx_url = sprintf( 'http://blockchain.info/tx/%s', $row['TxWeb'] );
+    
+            if( isset( $row['Date'] ) ) {
+                $row['Date'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Date'] );
+            }
+            if( isset( $row['Addr Short'] ) ) {
+                $row['Addr Short'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Addr Short'] );
+            }
+            if( isset( $row['Address'] ) ) {
+                $row['Address'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Address'] );
+            }
+            if( isset( $row['Tx Short'] ) ) {
+                $row['Tx Short'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx Short'] );
+            }
+            if( isset( $row['Tx'] ) ) {
+                $row['Tx'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx'] );
+            }
+            
+            unset( $row['AddressWeb'] );
+            unset( $row['TxWeb'] );
+        }
+
+        if( @$results[0] ) {
+            $header = array_keys( $results[0] );
+        }
+        
+        $table = new html_table();
+        $table->header_attrs = array();
+        $table->table_attrs = array( 'class' => 'bitprices bordered' );
+        $html = $table->table_with_header( $results, $header );
+        
+        fwrite( $fh, $html );
+    }
     
     static public function write_results_fixed_width( $fh, $results ) {
         
