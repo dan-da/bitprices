@@ -275,6 +275,7 @@ END;
                 }
             }
             $idx = 0;
+            $understood = array( 'p2sh', 'hash160' );
             foreach( $tx_toshi['outputs'] as $output ) {
                 $idx ++;
                 // json has an array of addresses per output.  not sure what this means, so will skip/warn if count != 1.
@@ -283,10 +284,11 @@ END;
                     mylogger()->log( $msg, mylogger::warning );
                     continue;
                 }
-                // script_type can be hash160 or multisig.
-                // we ignore multisig (or anything else we don't understand) for balance calcs.
+                // script_type can be hash160, p2sh or multisig.
+                // If we include multisig in balance calcs, then our balances do not match with bitcoind.
+                // So for now we include hash160 and p2sh only.
                 // See also: https://github.com/coinbase/toshi/issues/189
-                if( $output['addresses'][0] == $addr && $output['script_type'] == 'hash160' ) {
+                if( $output['addresses'][0] == $addr && in_array( $output['script_type'], $understood ) ) {
                     $amount_in = $amount_in + $output['amount'];
                 }
             }
