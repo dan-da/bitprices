@@ -222,7 +222,7 @@ END;
     }
     
     protected function get_address_transactions( $addr ) {
-        $url_mask = "https://bitcoin.toshi.io/api/v0/addresses/%s/transactions";
+        $url_mask = "https://bitcoin.toshi.io/api/v0/addresses/%s/transactions?limit=1000";
         $url = sprintf( $url_mask, $addr );
         
         mylogger()->log( "Retrieving transactions from $url", mylogger::info );
@@ -257,9 +257,16 @@ END;
             $idx = 0;
             foreach( $tx_toshi['inputs'] as $input ) {
                 $idx ++;
+                
+                // $input['addresses] can be empty, eg for a coinbase transaction
+                //    $input['coinbase'] will be set instead.
+                if( !isset( $input['addresses'] ) ) {
+                    continue;
+                }
+                
                 // json has an array of addresses per input.  not sure what this means, so will skip/warn if count != 1.
-                if( count( $input['addresses'] ) != 1 ) {
-                    $msg = sprintf( "Unsupported number of addresses (%s) in input #%, transaction %s.  skipping input.", count( $input['addresses'] ), $idx, $tx_toshi['hash'] );
+                if( @count( $input['addresses'] ) != 1 ) {
+                    $msg = sprintf( "Unsupported number of addresses (%s) in input #%s, transaction %s.  skipping input.", @count( $input['addresses'] ), $idx, $tx_toshi['hash'] );
                     mylogger()->log( $msg, mylogger::warning );
                     continue;
                 }
@@ -276,7 +283,10 @@ END;
                     mylogger()->log( $msg, mylogger::warning );
                     continue;
                 }
-                if( $output['addresses'][0] == $addr ) {
+                // script_type can be hash160 or multisig.
+                // we ignore multisig (or anything else we don't understand) for balance calcs.
+                // See also: https://github.com/coinbase/toshi/issues/189
+                if( $output['addresses'][0] == $addr && $output['script_type'] == 'hash160' ) {
                     $amount_in = $amount_in + $output['amount'];
                 }
             }
