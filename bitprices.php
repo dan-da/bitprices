@@ -28,7 +28,7 @@ function main( $argv ) {
         
         // print validation errors to stderr.
         if( $e->getCode() == 2 ) {
-            fprintf( STDERR, $e->getMessage() );
+            fprintf( STDERR, $e->getMessage() . "\n\n" );
         }
         return $e->getCode() ?: 1;
     }
@@ -64,7 +64,9 @@ class bitprices {
                                       'addresses:', 'addressfile:',
                                       'direction:', 'currency:',
                                       'cols:', 'outfile:',
-                                      'format:', 'logfile:'
+                                      'format:', 'logfile:',
+                                      'toshi:', 'toshi-fast',
+                                      'addr-tx-limit:', 'testnet'
                                       ) );
         
         if( !isset($params['g']) ) {
@@ -74,6 +76,17 @@ class bitprices {
         if( !@$params['addresses'] && !@$params['addressfile'] ) {
             $this->print_help();
             return false;
+        }
+        
+        $params['toshi-fast'] = isset($params['toshi-fast']);
+        $params['testnet'] = isset($params['testnet']);
+        
+        if( !@$params['toshi'] ) {
+            $params['toshi'] = 'https://bitcoin.toshi.io';
+        }
+
+        if( !@$params['addr-tx-limit'] ) {
+            $params['addr-tx-limit'] = 1000;
         }
         
         if( @$params['logfile'] ) {
@@ -114,7 +127,8 @@ class bitprices {
                 unset( $list[$idx] );
                 continue;
             }
-            if( !AddressValidator::isValid( $addr ) ) {
+            $version = $params['testnet'] ? AddressValidator::TESTNET : AddressValidator::MAINNET;
+            if( !AddressValidator::isValid( $addr, $version ) ) {
                 // code 2 means an input validation exception.
                 throw new Exception( "Bitcoin address $addr is invalid", 2 );
             }
@@ -151,10 +165,10 @@ class bitprices {
 
     -g                   go!
     
-    --addresses          comma separated list of bitcoin addresses
-    --addressfile        file containing bitcoin addresses, one per line.
+    --addresses=<csv>    comma separated list of bitcoin addresses
+    --addressfile=<path> file containing bitcoin addresses, one per line.
     
-    --direction          transactions in | out | both   default = both.
+    --direction=<dir>    transactions in | out | both   default = both.
     
     --date_start=<date>  Look for transactions since date. default = all.
     --date_end=<date>    Look for transactions until date. default = now.
@@ -166,12 +180,18 @@ class bitprices {
                          others=address,tx,txshort
                                 btcbalanceperiod,fiatbalanceperiod
                                 
-    --outfile=<file>     specify output file path.
+    --outfile=<path>     specify output file path.
     --format=<format>    txt|csv|json|jsonpretty|html|all     default=txt
     
                          if all is specified then a file will be created
                          for each format with appropriate extension.
                          only works when outfile is specified.
+                         
+    --toshi=<url>       toshi server. defaults to https://bitcoin.toshi.io
+    --toshi-fast        if set, toshi server supports filtered transactions.
+    
+    --addr-tx-limit=<n> per address transaction limit. default = 1000
+    --testnet           use testnet. only affects addr validation.
 
 
 END;
@@ -222,13 +242,20 @@ END;
     }
     
     protected function get_address_transactions( $addr ) {
-        $url_mask = "https://bitcoin.toshi.io/api/v0/addresses/%s/transactions?limit=1000";
-        $url = sprintf( $url_mask, $addr );
+
+        $params = $this->get_params();
+        
+        $tx_method = $params['toshi-fast'] ? 'transactionsfiltered' : 'transactions';
+        $addr_tx_limit = $params['addr-tx-limit'];
+        
+        $url_mask = "%s/api/v0/addresses/%s/%s?limit=%s";
+        $url = sprintf( $url_mask, $params['toshi'], $addr, $tx_method, $addr_tx_limit );
         
         mylogger()->log( "Retrieving transactions from $url", mylogger::info );
         
         // Todo:  make more robust with timeout, retries, etc.
         $buf = @file_get_contents( $url );
+        
         // note: http_response_header is set by file_get_contents.
         // next line will throw exception wth code 1001 if response code not found.
         $server_http_code = httputil::http_response_header_http_code( @$http_response_header );
@@ -275,7 +302,7 @@ END;
                 }
             }
             $idx = 0;
-            $understood = array( 'p2sh', 'hash160' );
+            $understood = array( 'p2sh', 'hash160', 'pubkey' );
             foreach( $tx_toshi['outputs'] as $output ) {
                 $idx ++;
                 // json has an array of addresses per output.  not sure what this means, so will skip/warn if count != 1.
