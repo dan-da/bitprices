@@ -96,10 +96,10 @@ transactions only, or both types.
 
     -g                   go!
     
-    --addresses          comma separated list of bitcoin addresses
-    --addressfile        file containing bitcoin addresses, one per line.
+    --addresses=<csv>    comma separated list of bitcoin addresses
+    --addressfile=<path> file containing bitcoin addresses, one per line.
     
-    --direction          transactions in | out | both   default = both.
+    --direction=<dir>    transactions in | out | both   default = both.
     
     --date_start=<date>  Look for transactions since date. default = all.
     --date_end=<date>    Look for transactions until date. default = now.
@@ -107,12 +107,22 @@ transactions only, or both types.
     --currency=<curr>    symbol supported by bitcoinaverage.com.  default = USD.
     
     --cols=<cols>        default=date,time,addrshort,btcin,btcout,btcbalance
-                                 fiatin,fiatout,fiatprice
+                                 fiatin,fiatout,fiatbalance,fiatprice
                          others=address,tx,txshort
                                 btcbalanceperiod,fiatbalanceperiod
                                 
-    --outfile=<file>     specify output file path.
-    --format=<format>    plain|csv|json|jsonpretty     default=plain
+    --outfile=<path>     specify output file path.
+    --format=<format>    txt|csv|json|jsonpretty|html|all     default=txt
+    
+                         if all is specified then a file will be created
+                         for each format with appropriate extension.
+                         only works when outfile is specified.
+                         
+    --toshi=<url>       toshi server. defaults to https://bitcoin.toshi.io
+    --toshi-fast        if set, toshi server supports filtered transactions.
+    
+    --addr-tx-limit=<n> per address transaction limit. default = 1000
+    --testnet           use testnet. only affects addr validation.
 
 
 # Exporting addresses from wallets.
@@ -162,8 +172,35 @@ may work with lower versions.
  php ./bitprices.php
 ```
 
+# Toshi Fork
+
+This tool calls a toshi (http://toshi.io) API to list all the transactions
+for each address.  This toshi API is slow for two reasons:
+
+* Toshi returns all inputs and outputs for each transaction although we need
+only those for the address we are interested in.  I have seen result sets over
+20 megabytes for a single address.
+* The API supports only one address at a time.  It would be faster to query
+for all addresses at once.
+
+I have created a toshi fork at http://github.com/dan-da/toshi that implements
+a new API (/addresses/.../transactionsfiltered) which filters out transaction
+inputs/outputs we are not interested in.
+
+The savings are significant.  An API call that was taking 6 seconds and
+returning a huge result set now takes .2 seconds and returns less than 1k of
+data.
+
+Further optimizations are possible:
+* the new API is still processing only one address at a time.
+* the new API retrieves extra metadata about the address that is unnecessary.
+
+
 # Todos
 
+* Create website frontend for the tool.  In progress.
+  see http://mybitprices.info
 * Add Bip32, 39, 44 support ( HD Wallets ) so it is only necessary to
   input master public key and entire wallet can be scanned.
-* Create website frontend for the tool.
+* optimize toshi API further.
+* hopefully get toshi changes accepted by toshi project maintainers.
