@@ -6,7 +6,6 @@ require_once dirname(__FILE__) . '/lib/mylogger.class.php';
 require_once dirname(__FILE__) . '/lib/mysqlutil.class.php';
 require_once dirname(__FILE__) . '/lib/httputil.class.php';
 require_once dirname(__FILE__) . '/lib/html_table.class.php';
-require_once dirname(__FILE__) . '/lib/vendor/autoload.php';
 require_once dirname(__FILE__) . '/lib/bitcoin-php/bitcoin.inc';
 
 require_once dirname(__FILE__) . '/lib/validator/AddressValidator.php';
