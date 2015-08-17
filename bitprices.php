@@ -6,9 +6,14 @@ require_once dirname(__FILE__) . '/lib/mylogger.class.php';
 require_once dirname(__FILE__) . '/lib/mysqlutil.class.php';
 require_once dirname(__FILE__) . '/lib/httputil.class.php';
 require_once dirname(__FILE__) . '/lib/html_table.class.php';
+require_once dirname(__FILE__) . '/lib/vendor/autoload.php';
+require_once dirname(__FILE__) . '/lib/bitcoin-php/bitcoin.inc';
 
 require_once dirname(__FILE__) . '/lib/validator/AddressValidator.php';
 use \LinusU\Bitcoin\AddressValidator;
+
+require_once dirname(__FILE__) . '/lib/blockchain_api.php';
+
 
 define( 'SATOSHI', 100000000 );
 
@@ -66,7 +71,10 @@ class bitprices {
                                       'cols:', 'outfile:',
                                       'format:', 'logfile:',
                                       'toshi:', 'toshi-fast',
-                                      'addr-tx-limit:', 'testnet'
+                                      'addr-tx-limit:', 'testnet',
+                                      'btcd-rpc-host:', 'btcd-rpc-port:',
+                                      'btcd-rpc-user:', 'btcd-rpc-pass:',
+                                      'api:', 'insight:',
                                       ) );
         
         if( !isset($params['g']) ) {
@@ -77,6 +85,14 @@ class bitprices {
             $this->print_help();
             return false;
         }
+
+        if( !@$params['api'] ) {
+            $params['api'] == 'insight';
+        }
+
+        if( !@$params['insight'] ) {
+            $params['insight'] = 'https://insight.bitpay.com';
+        }
         
         $params['toshi-fast'] = isset($params['toshi-fast']);
         $params['testnet'] = isset($params['testnet']);
@@ -84,6 +100,15 @@ class bitprices {
         if( !@$params['toshi'] ) {
             $params['toshi'] = 'https://bitcoin.toshi.io';
         }
+
+        if( !@$params['btcd-rpc-host'] ) {
+            $params['btcd-rpc-port'] = '127.0.0.1';  // use localhost
+        }
+        
+        if( !@$params['btcd-rpc-port'] ) {
+            $params['btcd-rpc-port'] = 8334;  // use default port.
+        }
+        
 
         if( !@$params['addr-tx-limit'] ) {
             $params['addr-tx-limit'] = 1000;
@@ -168,6 +193,8 @@ class bitprices {
     --addresses=<csv>    comma separated list of bitcoin addresses
     --addressfile=<path> file containing bitcoin addresses, one per line.
     
+    --api=<api>          toshi|btcd|insight.   default = insight.
+    
     --direction=<dir>    transactions in | out | both   default = both.
     
     --date_start=<date>  Look for transactions since date. default = all.
@@ -190,6 +217,13 @@ class bitprices {
     --toshi=<url>       toshi server. defaults to https://bitcoin.toshi.io
     --toshi-fast        if set, toshi server supports filtered transactions.
     
+    --btcd-rpc-host=<h> btcd rpc host.  default = 127.0.0.1
+    --btcd-rpc-port=<p> btcd rpc port.  default = 8334
+    --btcd-rpc-user=<u> btcd rpc username.
+    --btcd-rpc-pass=<p> btcd rpc password.
+    
+    --insight=<url>     insight server. defaults to https://insight.bitpay.com
+    
     --addr-tx-limit=<n> per address transaction limit. default = 1000
     --testnet           use testnet. only affects addr validation.
 
@@ -210,8 +244,8 @@ END;
         $results = array();
         foreach( $trans as $tx ) {
             $tx['exchange_rate'] = $this->get_historic_price( $currency, $tx['block_time'] );
-            $tx['fiat_amount_in'] = $this->btc_display( $tx['amount_in'] * $tx['exchange_rate'] );
-            $tx['fiat_amount_out'] = $this->btc_display( $tx['amount_out'] * $tx['exchange_rate'] );
+            $tx['fiat_amount_in'] = btcutil::btc_display( $tx['amount_in'] * $tx['exchange_rate'] );
+            $tx['fiat_amount_out'] = btcutil::btc_display( $tx['amount_out'] * $tx['exchange_rate'] );
             $tx['fiat_currency'] = $currency;
             $results[] = $tx;
         }
@@ -220,138 +254,19 @@ END;
     }
     
     /**
-     * Uses toshi.io to obtain historical transactions for
+     * queries a blockchain api provider to obtain historical transactions for
      * list of input addresses.
-     *
-     * A toshi request looks like:
-     *   https://bitcoin.toshi.io/api/v0/addresses/12c6DSiU4Rq3P4ZxziKxzrL5LmMBrzjrJX/transactions
-     *
-     * see: https://toshi.io/docs/#get-address-transactions
      */
     protected function get_matching_transactions( $addrs ) {
-                
-        $tx_list = array();
-        foreach( $addrs as $addr ) {
-            $tx_list_new = $this->get_address_transactions( $addr );
-            $tx_list = array_merge( $tx_list, $tx_list_new );
-        }
+        $params = $this->get_params();
         
+        $api = blockchain_api_factory::instance( $params['api'] );
+        $tx_list = $api->get_addresses_transactions( $addrs, $params );
 //        print_r( $tx_list ); exit;
         
         return $tx_list;
     }
-    
-    protected function get_address_transactions( $addr ) {
 
-        $params = $this->get_params();
-        
-        $tx_method = $params['toshi-fast'] ? 'transactionsfiltered' : 'transactions';
-        $addr_tx_limit = $params['addr-tx-limit'];
-        
-        $url_mask = "%s/api/v0/addresses/%s/%s?limit=%s";
-        $url = sprintf( $url_mask, $params['toshi'], $addr, $tx_method, $addr_tx_limit );
-        
-        mylogger()->log( "Retrieving transactions from $url", mylogger::info );
-        
-        // Todo:  make more robust with timeout, retries, etc.
-        $buf = @file_get_contents( $url );
-        
-        // note: http_response_header is set by file_get_contents.
-        // next line will throw exception wth code 1001 if response code not found.
-        $server_http_code = httputil::http_response_header_http_code( @$http_response_header );
-        
-        if( $server_http_code == 404 ) {
-            return array();
-        }
-        else if( $server_http_code != 200 ) {
-            throw new Exception( "Got unexpected response code $server_http_code" );
-        }
-        
-        $data = json_decode( $buf, true );
-        $tx_list = $data['transactions'];
-        
-        return $this->normalize_toshi_transactions( $tx_list, $addr );
-    }
-    
-    protected function normalize_toshi_transactions( $tx_list_toshi, $addr ) {
-//print_r( $tx_list_toshi );        
-        $tx_list_normal = array();
-        foreach( $tx_list_toshi as $tx_toshi ) {
-            $amount_in = 0;
-            $amount_out = 0;
-            $amount = 0;
-            
-            $idx = 0;
-            foreach( $tx_toshi['inputs'] as $input ) {
-                $idx ++;
-                
-                // $input['addresses] can be empty, eg for a coinbase transaction
-                //    $input['coinbase'] will be set instead.
-                if( !isset( $input['addresses'] ) ) {
-                    continue;
-                }
-                
-                // json has an array of addresses per input.  not sure what this means, so will skip/warn if count != 1.
-                if( @count( $input['addresses'] ) != 1 ) {
-                    $msg = sprintf( "Unsupported number of addresses (%s) in input #%s, transaction %s.  skipping input.", @count( $input['addresses'] ), $idx, $tx_toshi['hash'] );
-                    mylogger()->log( $msg, mylogger::warning );
-                    continue;
-                }
-                if( $input['addresses'][0] == $addr ) {
-                    $amount_out = $amount_out + $input['amount'];
-                }
-            }
-            $idx = 0;
-            $understood = array( 'p2sh', 'hash160', 'pubkey' );
-            foreach( $tx_toshi['outputs'] as $output ) {
-                $idx ++;
-                // json has an array of addresses per output.  not sure what this means, so will skip/warn if count != 1.
-                if( count( $output['addresses'] ) != 1 ) {
-                    $msg = sprintf( "Unsupported number of addresses (%s) in output #%, transaction %s.  skipping output.", count( $output['addresses'] ), $idx, $tx_toshi['hash'] );
-                    mylogger()->log( $msg, mylogger::warning );
-                    continue;
-                }
-                // script_type can be hash160, p2sh or multisig.
-                // If we include multisig in balance calcs, then our balances do not match with bitcoind.
-                // So for now we include hash160 and p2sh only.
-                // See also: https://github.com/coinbase/toshi/issues/189
-                if( $output['addresses'][0] == $addr && in_array( $output['script_type'], $understood ) ) {
-                    $amount_in = $amount_in + $output['amount'];
-                }
-            }
-            $amount = $amount_in - $amount_out;
-                        
-            $tx_list_normal[] = array( 'block_time' => strtotime( $tx_toshi['block_time'] ),
-                                       'addr' => $addr,
-                                       'amount' => $amount,
-                                       'amount_in' => $amount_in,
-                                       'amount_out' => $amount_out,
-                                       'txid' => $tx_toshi['hash'],
-                                     );
-            
-        }
-        
-        return $tx_list_normal;
-    }
-    
-    protected function btc_display( $val ) {
-        return number_format( round( $val / SATOSHI, 8 ), 8, '.', '');
-    }
-
-    protected function fiat_display( $val ) {
-        return number_format( round( $val / 100, 2 ), 2, '.', '');
-    }
-    
-    protected function btc_add( $a, $b ) {
-        $satoshi = 10000000;
-        return ($a * $satoshi + $b * $satoshi) / $satoshi;
-    }
-
-    protected function btc_sub( $a, $b ) {
-        $satoshi = 10000000;
-        return ($a * $satoshi - $b * $satoshi) / $satoshi;
-    }
-    
     protected function get_historic_price( $currency, $timestamp ) {
         
         $date = date( 'Y-m-d', $timestamp );
@@ -485,15 +400,15 @@ END;
                     case 'addrshort': $row['Addr Short'] = $this->shorten_addr( $r['addr'] ); break;
                     case 'address': $row['Address'] = $r['addr']; break;
                     case 'addressweb': $row['AddressWeb'] = $r['addr']; break;
-                    case 'btcin': $row['BTC In'] = $this->btc_display( $r['amount_in'] ); break;
-                    case 'btcout': $row['BTC Out'] = $this->btc_display( $r['amount_out'] ); break;
-                    case 'btcbalance': $row['BTC Balance'] = $this->btc_display( $btc_balance ); break;
-                    case 'btcbalanceperiod': $row['BTC Balance Period'] = $this->btc_display( $btc_balance_period ); break;
-                    case 'fiatin': $row[$fc . ' In'] = $this->fiat_display( $r['fiat_amount_in'] ); break;
-                    case 'fiatout': $row[$fc . ' Out'] = $this->fiat_display( $r['fiat_amount_out'] ); break;
-                    case 'fiatbalance': $row[$fc . ' Balance'] = $this->fiat_display( $fiat_balance ); break;
-                    case 'fiatbalanceperiod': $row[$fc . ' Balance Period'] = $this->fiat_display( $fiat_balance_period ); break;
-                    case 'fiatprice': $row[$fc . ' Price'] = $this->fiat_display( $r['exchange_rate'] ); break;
+                    case 'btcin': $row['BTC In'] = btcutil::btc_display( $r['amount_in'] ); break;
+                    case 'btcout': $row['BTC Out'] = btcutil::btc_display( $r['amount_out'] ); break;
+                    case 'btcbalance': $row['BTC Balance'] = btcutil::btc_display( $btc_balance ); break;
+                    case 'btcbalanceperiod': $row['BTC Balance Period'] = btcutil::btc_display( $btc_balance_period ); break;
+                    case 'fiatin': $row[$fc . ' In'] = btcutil::fiat_display( $r['fiat_amount_in'] ); break;
+                    case 'fiatout': $row[$fc . ' Out'] = btcutil::fiat_display( $r['fiat_amount_out'] ); break;
+                    case 'fiatbalance': $row[$fc . ' Balance'] = btcutil::fiat_display( $fiat_balance ); break;
+                    case 'fiatbalanceperiod': $row[$fc . ' Balance Period'] = btcutil::fiat_display( $fiat_balance_period ); break;
+                    case 'fiatprice': $row[$fc . ' Price'] = btcutil::fiat_display( $r['exchange_rate'] ); break;
                     case 'txshort': $row['Tx Short'] = $this->shorten_addr( $r['txid'] ); break;
                     case 'tx': $row['Tx'] = $r['txid']; break;
                     case 'txweb': $row['TxWeb'] = $r['txid']; break;
@@ -677,4 +592,25 @@ END;
     }
     
 }
+
+class btcutil {
+    static public function btc_to_int( $val ) {
+        return $val * 100000000;
+    }
+
+    static public function int_to_btc( $val ) {
+        return $val * 100000000;
+    }
+    
+    static public function btc_display( $val ) {
+        return number_format( round( $val / SATOSHI, 8 ), 8, '.', '');
+    }
+
+    static public function fiat_display( $val ) {
+        return number_format( round( $val / 100, 2 ), 2, '.', '');
+    }    
+}
+
+
+
 
