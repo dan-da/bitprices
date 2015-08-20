@@ -146,14 +146,14 @@ class blockchain_api_btcd implements blockchain_api {
         
         $url = sprintf( 'http://%s:%s@%s:%s/', $params['btcd-rpc-user'], $params['btcd-rpc-pass'],
                                           $params['btcd-rpc-host'], $params['btcd-rpc-port']);
-echo $url . "\n";
+        // echo $url . "\n";
         $rpc = new BitcoinClient( $url, false, 'BTC' );
         
-        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=1000000, $vinExtra=true );
-/*        
-        print_r( $tx_list );
-        exit;
-*/
+        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=1000000, $vinExtra=0 );
+        mylogger()->log( "Received transactions from btcd.", mylogger::info );
+
+//        print_r( $tx_list );  exit;
+//        exit;
         
         return $this->normalize_transactions( $tx_list, $addr );
     }
@@ -170,10 +170,17 @@ echo $url . "\n";
             foreach( $tx_btcd['vin'] as $input ) {
                 $idx ++;
                 
-                // $input['addresses] can be empty, eg for a coinbase transaction
+                // note: at this time, prevOut requires patched btcd from
+                // https://github.com/dan-da/btcd
+                $prevOut = @$input['prevOut'];
+                if( !$prevOut ) {
+                    continue;
+                }
+                
+                // $prevOut['addresses] can be empty, eg for a coinbase transaction
                 //    $input['coinbase'] will be set instead.
                 
-                $addresses = @$input['addresses'];
+                $addresses = @$prevOut['addresses'];
                 if( !@count( $addresses ) ) {
                     continue;
                 }
@@ -187,7 +194,7 @@ echo $url . "\n";
                     continue;
                 }
                 if( $addresses[0] == $addr ) {
-                    $amount_out = $amount_out + btcutil::btc_to_int( $input['value'] );
+                    $amount_out = $amount_out + btcutil::btc_to_int( $prevOut['value'] );
                 }
             }
             $idx = 0;
@@ -195,12 +202,12 @@ echo $url . "\n";
             foreach( $tx_btcd['vout'] as $output ) {
 //print_r( $output ); exit;
                 $idx ++;
-                $addresses = $output['scriptPubKey']['addresses'];
+                $addresses = @$output['scriptPubKey']['addresses'];
                 
                 // more than one address typically means multisig.  we ignore it.
                 // Example address with multi-sig 1AJbsFZ64EpEfS5UAjAfcUG8pH8Jn3rn1F
                 //     tx = 2daea775df11a98646c475c04247b998bbed053dc0c72db162dd6b0a99a59c26                
-                if( count( $addresses ) != 1 ) {
+                if( @count( $addresses ) != 1 ) {
                     $msg = sprintf( "Unsupported number of addresses (%s) in output #%, transaction %s.  skipping output.", @count( $addresses ), $idx, @$tx_btcd['hash'] );
                     // mylogger()->log( $msg, mylogger::warning );
                     continue;
@@ -246,7 +253,6 @@ class blockchain_api_insight_multiaddr  {
         
         // Todo:  make more robust with timeout, retries, etc.
         $buf = @file_get_contents( $url );
-file_put_contents( '/tmp/insight_multiaddr.json', $buf );
         
         // note: http_response_header is set by file_get_contents.
         // next line will throw exception wth code 1001 if response code not found.
@@ -258,6 +264,10 @@ file_put_contents( '/tmp/insight_multiaddr.json', $buf );
         else if( $server_http_code != 200 ) {
             throw new Exception( "Got unexpected response code $server_http_code" );
         }
+
+        mylogger()->log( "Received transactions from insight server.", mylogger::info );
+        // file_put_contents( '/tmp/insight_multiaddr.json', $buf );
+
         
         $data = json_decode( $buf, true );
         $tx_list = @$data['items'];
@@ -369,7 +379,6 @@ class blockchain_api_insight  {
         
         // Todo:  make more robust with timeout, retries, etc.
         $buf = @file_get_contents( $url );
-file_put_contents( '/tmp/insight.json', $buf );
         
         // note: http_response_header is set by file_get_contents.
         // next line will throw exception wth code 1001 if response code not found.
@@ -382,9 +391,12 @@ file_put_contents( '/tmp/insight.json', $buf );
             throw new Exception( "Got unexpected response code $server_http_code" );
         }
         
+        mylogger()->log( "Received transactions from insight server.", mylogger::info );
+        // file_put_contents( '/tmp/insight.json', $buf );        
+        
         $data = json_decode( $buf, true );
         $tx_list = @$data['txs'];
-//print_r( $tx_list ); exit;        
+//print_r( $tx_list ); exit;
         
         return $this->normalize_transactions( $tx_list, $addr );
     }
