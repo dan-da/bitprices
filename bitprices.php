@@ -86,7 +86,7 @@ class bitprices {
         }
 
         if( !@$params['api'] ) {
-            $params['api'] == 'insight';
+            $params['api'] == 'toshi';
         }
 
         if( !@$params['insight'] ) {
@@ -192,7 +192,7 @@ class bitprices {
     --addresses=<csv>    comma separated list of bitcoin addresses
     --addressfile=<path> file containing bitcoin addresses, one per line.
     
-    --api=<api>          toshi|btcd|insight.   default = insight.
+    --api=<api>          toshi|btcd|insight.   default = toshi.
     
     --direction=<dir>    transactions in | out | both   default = both.
     
