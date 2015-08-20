@@ -19,8 +19,14 @@ then the tool can provide a full and complete report of all wallet transactions.
 Daily exchange rates are obtained from bitcoinaverage.com.  All fiat currencies
 supported by bitcoinaverage.com may be reported, not only USD.
 
-Historic transaction data for each address is obtained from toshi.io, a service
-of Coinbase.com that provides a free API for querying blockchain data.
+Historic transaction data for each address is obtained from a blockchain API
+service provider, which can be either a third party service or something you
+run locally.
+
+At present, the supported blockchain APIs are:
+  toshi:  online service at toshi.io, or run locally.
+  insight: online service at insight.bitpay.com, or run locally.
+  btcd: typically this is run locally.
 
 Any public address or set of addresses may be reported on.
 
@@ -86,7 +92,6 @@ Additionally, the report may contain incoming transactions only, outgoing
 transactions only, or both types.
 
 # Usage
-
    bitprices.php
 
    This script generates a report of transactions with the USD value
@@ -98,6 +103,8 @@ transactions only, or both types.
     
     --addresses=<csv>    comma separated list of bitcoin addresses
     --addressfile=<path> file containing bitcoin addresses, one per line.
+    
+    --api=<api>          toshi|btcd|insight.   default = insight.
     
     --direction=<dir>    transactions in | out | both   default = both.
     
@@ -120,6 +127,13 @@ transactions only, or both types.
                          
     --toshi=<url>       toshi server. defaults to https://bitcoin.toshi.io
     --toshi-fast        if set, toshi server supports filtered transactions.
+    
+    --btcd-rpc-host=<h> btcd rpc host.  default = 127.0.0.1
+    --btcd-rpc-port=<p> btcd rpc port.  default = 8334
+    --btcd-rpc-user=<u> btcd rpc username.
+    --btcd-rpc-pass=<p> btcd rpc password.
+    
+    --insight=<url>     insight server. defaults to https://insight.bitpay.com
     
     --addr-tx-limit=<n> per address transaction limit. default = 1000
     --testnet           use testnet. only affects addr validation.
@@ -172,7 +186,29 @@ may work with lower versions.
  php ./bitprices.php
 ```
 
-# Toshi Fork
+# Blockchain API provider notes.
+
+tip!  use the --api flag to switch between blockchain API providers.
+
+Each API has strengths and weaknesses. Some are faster than others,
+or easier/harder to run locally. For first time usage, the online toshi
+service is recommended, and it is the default.
+
+At present, running the forked version of btcd locally seems to be the best
+option for fastest report generation.
+
+## Toshi
+
+as of v0.1.0
+
+* Fast for transactions with few inputs/outputs
+* does not support filtering unrelated inputs/outputs.   takes minutes and
+  generates huge results.
+* when running locally, it is very slow to sync blockchain (months) unless the
+database is stored on SSD drive.
+* does not support querying multiple addresses at once.
+
+### Toshi Fork
 
 This tool calls a toshi (http://toshi.io) API to list all the transactions
 for each address.  This toshi API is slow for two reasons:
@@ -196,11 +232,43 @@ Further optimizations are possible:
 * the new API retrieves extra metadata about the address that is unnecessary.
 
 
+## Insight
+
+as of v0.2.18
+
+* Fast enough for transactions with few inputs/outputs, but 2-3x slower than
+  toshi in my testing for larger transactions.
+* does not support filtering unrelated inputs/outputs.  takes (more) minutes and
+  generates huge results.
+* supports querying multiple addresses at once with multiaddr API, but includes
+  each TX only once which presently confuses bitprices, leading to invalid
+  balances.
+
+## btcd
+
+as of 0.11.1-beta  (110100)
+
+* no public online API service available that I'm aware of, must be run locally.
+* Very fast transaction lookups, even with many inputs/outputs.
+* generates huge results with many inputs/outputs.
+* must be run with addrindex=1 option.  ( important! )
+
+btcd does not include addresses and amount in inputs. I have added this
+functionality in a forked version, and submitted a pull request.  Hopefully
+mainline accepts it soon.
+
+At this time, to use btcd you must download/install the forked version.  See:
+* https://github.com/dan-da/btcd
+* https://github.com/btcsuite/btcd/pull/487
+
+
 # Todos
 
 * Create website frontend for the tool.  In progress.
   see http://mybitprices.info
 * Add Bip32, 39, 44 support ( HD Wallets ) so it is only necessary to
   input master public key and entire wallet can be scanned.
-* optimize toshi API further.
+* interpret insight's multiaddr results correctly. In theory it should be faster.
+* optimize btcd further ( filter inputs/outputs )
 * hopefully get toshi changes accepted by toshi project maintainers.
+* hopefully get btcd changes accepted by btcd project maintainers.
