@@ -512,6 +512,11 @@ END;
             $header = array_keys( $results[0] );
         }
         
+        else {
+           // bail.
+           return;
+        }
+        
         $table = new html_table();
         $table->header_attrs = array();
         $table->table_attrs = array( 'class' => 'bitprices bordered' );
