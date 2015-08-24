@@ -272,23 +272,48 @@ END;
         
         // if date is today, then get 24 hour average.
         if( $date == date('Y-m-d', time() )) {
-            return $this->get_24_hour_avg_price( $currency );
+            return $this->get_24_hour_avg_price_cached( $currency );
         }
         
         $map = self::get_historic_prices( $currency );
         $price = @$map[$date];
         
-        // if price is not available in cached file, then force a download.
-        if( !$price ) {
-            $map = self::get_historic_prices( $currency, $download = true );
-            $date = date( 'Y-m-d', $timestamp );
-            $price = @$map[$date];
+        return $price;
+    }
+
+    protected function get_24_hour_avg_price_cached( $currency ) {
+        static $prices = array();
+
+        $price = @$prices[$currency];
+
+        $fname = dirname(__FILE__) . sprintf( '/price_24/24_hour_avg_price.%s.csv', $currency );
+        $max_age = 60 * 60;  // max 1 hour.
+
+        $cache_file_valid = file_exists( $fname ) && time() - filemtime( $fname ) < $max_age;
+
+        // use cached price file if file age is less than max_age
+        if( $cache_file_valid ) {
+            if( !$price ) {
+                $price = unserialize( file_get_contents( $fname ) );
+                $prices[$currency] = $price;
+            }
+            return $price;
         }
         
+
+        $dir = dirname( $fname );
+        file_exists($dir) || mkdir( $dir );
+
+        $price = $this->get_24_hour_avg_price( $currency );
+        file_put_contents( $fname, serialize($price) );
+
+        $prices[$currency] = $price;
+
         return $price;
     }
     
     protected function get_24_hour_avg_price( $currency ) {
+
         $url_mask = 'https://api.bitcoinaverage.com/ticker/global/%s/';
         $url = sprintf( $url_mask, strtoupper( $currency ) );
         
@@ -298,13 +323,13 @@ END;
         return $data['24h_avg'] * 100;
     }
     
-    protected static function get_historic_prices($currency, $download = false) {
+    protected static function get_historic_prices($currency) {
         
         static $maps = array();
         static $downloaded_map = array();
         
         $map = @$maps[$currency];
-        if( $map && !$download ) {
+        if( $map ) {
             return $map;
         }
 
@@ -315,10 +340,11 @@ END;
         }
         
         $fname = dirname(__FILE__) . sprintf( '/price_history/per_day_all_time_history.%s.csv', $currency );
+        $file_age = time() - filemtime( $fname );
         
-        if( !file_exists( $fname ) || $download ) {
+        if( !file_exists( $fname ) || $file_age > 60*60*12 ) {
             $dir = dirname( $fname );
-            $dir || mkdir( $dir );
+            file_exists($dir) || mkdir( $dir );
             
             $url_mask = 'https://api.bitcoinaverage.com/history/%s/per_day_all_time_history.csv';
             $url = sprintf( $url_mask, strtoupper( $currency ) );

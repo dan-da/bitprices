@@ -149,7 +149,7 @@ class blockchain_api_btcd implements blockchain_api {
         // echo $url . "\n";
         $rpc = new BitcoinClient( $url, false, 'BTC' );
         
-        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=1000000, $vinExtra=1 );
+        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=1000000, $vinExtra=1, $filterAddr=1 );
         mylogger()->log( "Received transactions from btcd.", mylogger::info );
 
 //        print_r( $tx_list );  exit;
