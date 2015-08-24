@@ -24,9 +24,9 @@ service provider, which can be either a third party service or something you
 run locally.
 
 At present, the supported blockchain APIs are:
-  toshi:  online service at toshi.io, or run locally.
-  insight: online service at insight.bitpay.com, or run locally.
-  btcd: typically this is run locally.
+* toshi:  online service at toshi.io, or run locally.
+* insight: online service at insight.bitpay.com, or run locally.
+* btcd: typically this is run locally.
 
 Any public address or set of addresses may be reported on.
 
