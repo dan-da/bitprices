@@ -163,9 +163,9 @@ class blockchain_api_btcd implements blockchain_api {
 //print_r( $tx_list_btcd );        
         $tx_list_normal = array();
         foreach( $tx_list_btcd as $tx_btcd ) {
-            $amount_in = 0;
-            $amount_out = 0;
-            $amount = 0;
+            $amount_in = (int)0;
+            $amount_out = (int)0;
+            $amount = (int)0;
             
             $idx = 0;
             foreach( $tx_btcd['vin'] as $input ) {
@@ -230,7 +230,6 @@ class blockchain_api_btcd implements blockchain_api {
                                        'amount_out' => $amount_out,
                                        'txid' => $tx_btcd['txid'],
                                      );
-            
         }
         
         return $tx_list_normal;
