@@ -17,7 +17,7 @@ class t_8949_fifo extends test_base {
         $prevlastrow = $data[count($data)-2];
         $prevprevlastrow = $data[count($data)-3];
 
-        $this->eq( $numrows, 25, "Number of rows in report" );        
+        $this->eq( $numrows, 28, "Number of rows in report" );        
         
         $col = 'Proceeds';
         $this->eq( $lastrow[$col], 604.97, "Net Summary Short Proceeds" );

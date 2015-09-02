@@ -1,6 +1,10 @@
 #!/usr/bin/env php
 <?php
 
+/*
+ * This file implements a very basic test harness.
+ */
+
 // be safe and sane.
 require_once( dirname(__FILE__) . '/../lib/strict_mode.funcs.php' );
 
@@ -74,6 +78,10 @@ abstract class test_base {
 }
 
 class test_printer {
+
+    static public function print_status( $testname ) {
+        echo "Running tests in $testname...\n";
+    }
     
     static public function print_results( $results ) {
         $pass_cnt = 0;
@@ -133,7 +141,8 @@ function main() {
     foreach( $tests as $test ) {
         require( $test );
         $classname = basename( $test, '.test.php' );
-        
+
+        test_printer::print_status( $classname );
         $testobj = new $classname();
         $testobj->runtests();
         

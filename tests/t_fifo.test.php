@@ -19,9 +19,6 @@ class t_fifo extends test_base {
 
         $col = 'Realized Gain (FIFO, Long)';
         $this->eq( $lastrow[$col], 0.00, $col );
-        
-        $col = 'Unrealized Gain (FIFO)';
-        $this->eq( $lastrow[$col], 0.02, $col );
     }
 
     protected function month() {
@@ -35,8 +32,5 @@ class t_fifo extends test_base {
 
         $col = 'Realized Gain (FIFO, Long)';
         $this->eq( $lastrow[$col], 0.00, $col );
-
-        $col = 'Unrealized Gain (FIFO)';
-        $this->eq( $lastrow[$col], -0.06, $col );
     }
 }
