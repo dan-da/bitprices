@@ -689,18 +689,19 @@ avgperp_units_sum: $avgperp_units_sum
 //echo "==> total_btc_out: " . btcutil::int_to_btc( $total_btc_out ) . "\n";                
 //echo "==> total_fiatout: " . btcutil::fiat_display( $total_fiat_out ) . "\n";                
                 // See: http://accountingexplained.com/financial/inventories/avco-method
-//                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($total_btc_out) * $avg_cost_periodic;
 //              $cost_of_goods_sold_avg_perpetual = btcutil::int_to_btc($total_btc_out) * $avgperp_unit_cost;
 //echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg_perpetual  ) . "\n";                
-//                $realized_gain_avg_periodic = $total_fiat_out - $cost_of_goods_sold_avg_periodic;
                 
 //              $realized_gain_avg_perpetual = $total_fiat_out - $cost_of_goods_sold_avg_perpetual;
 
                 $cost_of_goods_sold_avg_perpetual = btcutil::int_to_btc($r['amount_out']) * $avgperp_unit_cost;
                 $realized_gain_avg_perpetual += ($r['fiat_amount_out'] - $cost_of_goods_sold_avg_perpetual);
+
+                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($total_btc_out) * $avg_cost_periodic;
+                $realized_gain_avg_periodic = $total_fiat_out - $cost_of_goods_sold_avg_periodic;
                 
-                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($r['amount_out']) * $avg_cost_periodic;
-                $realized_gain_avg_periodic += $r['fiat_amount_out'] - $cost_of_goods_sold_avg_periodic;
+//                $cost_of_goods_sold_avg_periodic += btcutil::int_to_btc($r['amount_out']) * $avg_cost_periodic;
+//                $realized_gain_avg_periodic += $r['fiat_amount_out'] - $cost_of_goods_sold_avg_periodic;
             }
 
             $total_avg_cost = ( btcutil::int_to_btc($btc_balance) * $avg_cost_periodic);
