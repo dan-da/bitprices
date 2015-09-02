@@ -206,7 +206,7 @@ class bitprices {
             }
         }
         if( !count( $list ) ) {
-            throw new Exception( "No valid addresses to process." );
+            throw new Exception( "No valid addresses to process.", 2 );
         }
         return $list;
     }
@@ -217,14 +217,15 @@ class bitprices {
     protected function get_col_templates() {
         $all_cols = implode( ',', array_keys( $this->all_columns() ) );
         $map = array(
-            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,btcbalance,price,fiatamount,fiatbalance,pricenow,realizedgainfifo,unrealizedgain' ),
+            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,btcbalance,price,fiatamount,fiatbalance,pricenow,realizedgainfifo' ),
             'gainloss' => array( 'desc' => "Unrealized Gains and Losses", 'cols' => 'date,fiatamount,pricenow,fiatgain,fiatgaintotal' ),
             'gainlossfifo' => array( 'desc' => "Gains and Losses (FIFO Method)", 'cols' => 'date,btcamount,fiatamount,realizedgainfifoshort,realizedgainfifolong,unrealizedgainfifo' ),
             'gainlosslifo' => array( 'desc' => "Gains and Losses (LIFO Method)", 'cols' => 'date,btcamount,fiatamount,realizedgainlifoshort,realizedgainlifolong,unrealizedgainlifo' ),
             'gainlossavgperiodic' => array( 'desc' => "Gains and Losses ( Avg. Cost Method, Periodic)", 'cols' => 'date,btcamount,fiatamount,realizedgainavgperiodic,unrealizedgainavgperiodic' ),
+            'gainlossavgperpetual' => array( 'desc' => "Gains and Losses ( Avg. Cost Method, Periodic)", 'cols' => 'date,btcamount,fiatamount,realizedgainavgperpetual,unrealizedgainavgperpetual' ),
             'thenandnow' => array( 'desc' => "Then and Now", 'cols' => 'date,price,fiatamount,pricenow,fiatamountnow,fiatgain,fiatgaintotal' ),
             'inout' => array( 'desc' => "Standard report with Inputs and Outputs", 'cols' => 'date,addrshort,btcamount,btcbalance,price,fiatamount,fiatbalance,pricenow,fiatgaintotal' ),
-            'dev' => array('desc' => "For development", 'cols' => 'date,btcin,btcout,btcbalance,fiatin,fiatout,fiatbalance,price,btcamount,fiatamount,fiatgain,fiatgaintotal,realizedgainfifo,realizedgainlifo,realizedgainavgperiodic,unrealizedgain' ),
+            'dev' => array('desc' => "For development", 'cols' => 'date,btcin,btcout,btcbalance,fiatin,fiatout,fiatbalance,price,btcamount,fiatamount,fiatgain,fiatgaintotal,realizedgainfifo,realizedgainlifo,realizedgainavgperiodic' ),
             'all' => array( 'desc' => "All available columns", 'cols' => $all_cols ),
         );
         foreach( $map as $k => $info ) {
@@ -242,6 +243,7 @@ class bitprices {
         $arg = $this->strip_whitespace( $arg );
         
         $templates = $this->get_col_templates();
+        $allcols = $this->all_columns();
 
         $parts = explode( ',', $arg, 2 );
         $report = $parts[0];
@@ -252,7 +254,13 @@ class bitprices {
                 $arg .= ',' . $extra;
             }
         }
-        return explode( ',', $arg );
+        $cols = explode( ',', $arg );
+        foreach( $cols as $c ) {
+            if( !isset($allcols[$c]) ) {
+                throw new Exception( "'$c' is not a known column or column template.", 2 );
+            }
+        }
+        return $cols;
     }
 
     // removes whitespace from a string    
@@ -311,8 +319,8 @@ class bitprices {
     --currency=<curr>    symbol supported by bitcoinaverage.com.  default = USD.
     
     --report-type=<type> schedule_d | tx.   default=tx
-                           options --cols, --list-templates, --list-cols
-                              apply to tx report only.
+                           options --direction, --cols, --list-templates,
+                                   --list-cols apply to tx report only.
                            option  --cost-method applies to schedule_d report
                               only.
                               
@@ -392,7 +400,6 @@ END;
         
         $api = blockchain_api_factory::instance( $params['api'] );
         $tx_list = $api->get_addresses_transactions( $addrs, $params );
-//        print_r( $tx_list ); exit;
         
         return $tx_list;
     }
@@ -425,7 +432,6 @@ END;
 
         $fname = dirname(__FILE__) . sprintf( '/price_24/24_hour_avg_price.%s.csv', $currency );
         $max_age = 60 * 60;  // max 1 hour.
-// echo "age: " . time() - filemtime( $fname ) . "\n";
         $cache_file_valid = file_exists( $fname ) && time() - filemtime( $fname ) < $max_age;
 
         // use cached price file if file age is less than max_age
@@ -442,7 +448,6 @@ END;
         
         @unlink( $fname );
         file_put_contents( $fname, serialize($price) );
-//        echo "wrote: $fname\n";
 
         $prices[$currency] = $price;
 
@@ -546,13 +551,17 @@ END;
         $short_term_gain = $long_term_gain = 0;
         
         $realized_gain_avg_periodic = 0;
+        $realized_gain_avg_perpetual = 0;
         
         $realized_gain_fifo_short = $realized_gain_fifo_long = 0;
         $realized_gain_lifo_short = $realized_gain_lifo_long = 0;
         $unrealized_gain_lifo = $unrealized_gain_fifo = 0;
         
+        $exchange_rate = 0;
+        $avgperp_unit_cost = 0;
+        $cost_of_goods_sold_avg_perpetual = 0;
+        
         $fifo_stack = array();
-        $lifo_stack = array();
                 
         $nr = array();
         foreach( $results as $r ) {
@@ -571,9 +580,7 @@ END;
             if( $r['amount_in'] ) {
                 // add to end of fifo stack
                 $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
-                // add to front of lifo stack.
-                $rowtmp = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
-                array_unshift( $fifo_stack, $rowtmp );
+                $lifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
             }
 
             // calc realized gains if it is an output.
@@ -590,12 +597,12 @@ END;
                 } );
 
                 // calc lifo totals to date
-                $this->calc_fifo_stack( $r, $fifo_stack, $is_fifo = false,
+                $this->calc_fifo_stack( $r, $lifo_stack, $is_fifo = false,
                                        function( $data )
                                         use (&$realized_gain_lifo_short, &$realized_gain_lifo_long ) {
                                             
                     $realized_gain_lifo_short  += $data['realized_gain_short'];
-                    $realized_gain_lifo_long  += $data['realized_gain_long'];
+                    $realized_gain_lifo_long  += $data['realized_gain_long'];                    
                 } );
             }
             
@@ -626,12 +633,41 @@ END;
             }
             else if( $r['block_time'] > $params['date-end'] +3600*24-1 ) {
                 continue;
-            }                        
+            }
+            
+            // calc avg cost, perpetual.
+            // See http://accountingexplained.com/financial/inventories/avco-method
+            $avgperp_units_sum = $btc_balance_period + $r['amount_in'];
+            $avgperp_unit_cost = $avgperp_unit_cost ?: $r['exchange_rate'];
+            if( $r['amount_in'] && $avgperp_units_sum) {
+/*                
+echo "----\n";
+echo "
+unit_cost: $avgperp_unit_cost
+btc_balance_period: $btc_balance_period
+exchange_rate: {$r['exchange_rate']}
+amount_in: {$r['amount_in']}
+amount_out: {$r['amount_out']}
+avgperp_units_sum: $avgperp_units_sum
+----
+
+";
+  */      
+                $avgperp_unit_cost = (($avgperp_unit_cost * $btc_balance_period) + ($r['exchange_rate'] * $r['amount_in'] )) / $avgperp_units_sum;
+            }
+            
+//var_dump( $avgperp_units_sum,
+//          btcutil::int_to_btc($avgperp_unit_cost * $btc_balance_period),
+//          btcutil::int_to_btc($r['exchange_rate'] * $r['amount_out'] )
+//    );
+//var_dump( $avgperp_units_sum, $avgperp_unit_cost, $cost_of_goods_sold_avg_perpetual );
+//echo "\n";
             
             $btc_balance_period += $btc_amount;
             $fiat_balance_period += $fiat_amount;
             $fiat_balance_now_period += $fiat_amount_now;
             $fiat_gain_balance_period += $fiat_gain;
+            $exchange_rate = $r['exchange_rate'];
             
             if( $r['amount_in'] ) {
                 $total_fiat_in += $r['fiat_amount_in'];
@@ -639,27 +675,35 @@ END;
                 $num_tx_in ++;
             }
 
-            // avg cost only changes on out (sale)
+            // avg cost only changes on in (purchase)
             $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::int_to_btc($total_btc_in) : 0;
 
             $btc_out_amount = $r['amount_out'] - $r['amount_in'];
             $fiat_out_amount = $r['fiat_amount_out'] - $r['fiat_amount_in'];
 
             if( $r['amount_out'] ) {
-//                echo sprintf( "sell: %s,%s\n", btcutil::btc_display($r['amount_out']), btcutil::fiat_display($r['exchange_rate']) );
                 $total_btc_out += $r['amount_out'];
                 $total_fiat_out += $r['fiat_amount_out'];
 
                 $num_tx_out ++;
+//echo "==> total_btc_out: " . btcutil::int_to_btc( $total_btc_out ) . "\n";                
+//echo "==> total_fiatout: " . btcutil::fiat_display( $total_fiat_out ) . "\n";                
+                // See: http://accountingexplained.com/financial/inventories/avco-method
+//                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($total_btc_out) * $avg_cost_periodic;
+//              $cost_of_goods_sold_avg_perpetual = btcutil::int_to_btc($total_btc_out) * $avgperp_unit_cost;
+//echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg_perpetual  ) . "\n";                
+//                $realized_gain_avg_periodic = $total_fiat_out - $cost_of_goods_sold_avg_periodic;
                 
-                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($total_btc_out) * $avg_cost_periodic;
-                $realized_gain_avg_periodic = $total_fiat_out - $cost_of_goods_sold_avg_periodic;
+//              $realized_gain_avg_perpetual = $total_fiat_out - $cost_of_goods_sold_avg_perpetual;
+
+                $cost_of_goods_sold_avg_perpetual = btcutil::int_to_btc($r['amount_out']) * $avgperp_unit_cost;
+                $realized_gain_avg_perpetual += ($r['fiat_amount_out'] - $cost_of_goods_sold_avg_perpetual);
+                
+                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($r['amount_out']) * $avg_cost_periodic;
+                $realized_gain_avg_periodic += $r['fiat_amount_out'] - $cost_of_goods_sold_avg_periodic;
             }
 
             $total_avg_cost = ( btcutil::int_to_btc($btc_balance) * $avg_cost_periodic);
-            
-//            $gain = ( btcutil::int_to_btc($btc_balance) * $r['exchange_rate']) - $total_avg_cost;
-//            $unrealized_gain = $gain;  // - $realized_gain_avg_periodic;
             
             $present_fiat_value = btcutil::int_to_btc($btc_balance_period * $r['exchange_rate_now']);
             $paper_gain = $present_fiat_value - $fiat_balance_period;
@@ -667,6 +711,7 @@ END;
             $unrealized_gain_fifo = $paper_gain - $realized_gain_fifo;
             $unrealized_gain_lifo = $paper_gain - $realized_gain_lifo;
             $unrealized_gain_avg_periodic = $paper_gain - $realized_gain_avg_periodic;
+            $unrealized_gain_avg_perpetual = $paper_gain - $realized_gain_avg_perpetual;
             
             $fc = strtoupper( $r['fiat_currency'] );
                        
@@ -717,6 +762,9 @@ END;
 
                     case 'realizedgainavgperiodic': $row[$cn] = btcutil::fiat_display( $realized_gain_avg_periodic ); break;
                     case 'unrealizedgainavgperiodic': $row[$cn] = btcutil::fiat_display( $unrealized_gain_avg_periodic ); break;
+
+                    case 'realizedgainavgperpetual': $row[$cn] = btcutil::fiat_display( $realized_gain_avg_perpetual ); break;
+                    case 'unrealizedgainavgperpetual': $row[$cn] = btcutil::fiat_display( $unrealized_gain_avg_perpetual ); break;
 
                     case 'txshort': $row[$cn] = $this->shorten_addr( $r['txid'] ); break;
                     case 'tx': $row[$cn] = $r['txid']; break;
@@ -798,7 +846,6 @@ END;
         usort( $results, $cb );
                 
         $fifo_stack = array();
-        $realized_gain_fifo_long = $realized_gain_fifo_short = 0;
         $proceeds_total_long = $proceeds_total_short = 0;
         $cost_basis_total_long = $cost_basis_total_short = 0;
         $gain_or_loss_total_long = $gain_or_loss_total_short = 0;
@@ -831,7 +878,7 @@ END;
                     $cost_basis_total_short += $longterm ? 0 : $cost_basis;
                     $gain_or_loss_total_long += $longterm ? $gain_or_loss : 0;
                     $gain_or_loss_total_short += $longterm ? 0 : $gain_or_loss;
-                    
+echo "gain_or_loss_total_short : $gain_or_loss_total_short\n";                    
                     $row['Description'] = $description_of_property;
                     $row['Date Acquired'] = gmdate('Y-m-d', $data['date_acquired'] );
                     $row['Date Sold/Disposed'] = gmdate('Y-m-d', $data['date_sold'] );
@@ -913,6 +960,9 @@ END;
             
             'realizedgainavgperiodic' => 'Realized Gain (AvCost Periodic)',
             'unrealizedgainavgperiodic' => 'Unrealized Gain (AvCost Periodic)',
+
+            'realizedgainavgperpetual' => 'Realized Gain (AvCost Perpetual)',
+            'unrealizedgainavgperpetual' => 'Unrealized Gain (AvCost Perpetual)',
                 
             'txshort' => 'Tx Short',
             'tx' => 'Tx',
