@@ -63,6 +63,7 @@ class bitprices {
         
         switch( $report_type ) {
             case 'schedule_d': $rows = $this->gen_report_schedule_d( $results, $format );  break;
+            case 'matrix': $rows = $this->gen_report_matrix( $results, $format );  break;
             default: $rows = $this->gen_report_tx( $results, $format ); break;
         }
 
@@ -318,11 +319,11 @@ class bitprices {
     
     --currency=<curr>    symbol supported by bitcoinaverage.com.  default = USD.
     
-    --report-type=<type> schedule_d | tx.   default=tx
+    --report-type=<type> tx | schedule_d | matrix.   default=tx
                            options --direction, --cols, --list-templates,
                                    --list-cols apply to tx report only.
-                           option  --cost-method applies to schedule_d report
-                              only.
+                           option  --cost-method applies to schedule_d and
+                                   matrix reports only.
                               
     --cost-method=<m>    fifo|lifo|avg. schedule_d report only.  default = fifo.
     
@@ -552,16 +553,32 @@ END;
         
         $realized_gain_avg_periodic = 0;
         $realized_gain_avg_perpetual = 0;
+        $cost_of_goods_sold_avg_periodic = 0;
         
         $realized_gain_fifo_short = $realized_gain_fifo_long = 0;
         $realized_gain_lifo_short = $realized_gain_lifo_long = 0;
         $unrealized_gain_lifo = $unrealized_gain_fifo = 0;
+        
+        
         
         $exchange_rate = 0;
         $avgperp_unit_cost = 0;
         $cost_of_goods_sold_avg_perpetual = 0;
         
         $fifo_stack = array();
+
+        foreach( $results as $r ) {
+            
+            if( $r['amount_in'] ) {
+                $total_fiat_in += $r['fiat_amount_in'];
+                $total_btc_in += $r['amount_in'];
+            }
+
+        }
+        // avg cost only changes on in (purchase)
+        $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::int_to_btc($total_btc_in) : 0;
+        $total_fiat_in = $total_btc_in = 0;
+
                 
         $nr = array();
         foreach( $results as $r ) {
@@ -586,23 +603,23 @@ END;
             // calc realized gains if it is an output.
             // TODO: avoid if a transfer between our wallet addresses.
             if( $r['amount_out'] ) {
-
+                
                 // calc fifo totals to date
                 $this->calc_fifo_stack( $r, $fifo_stack, $is_fifo = true,
                                        function( $data )
                                         use (&$realized_gain_fifo_short, &$realized_gain_fifo_long ) {
                                             
-                    $realized_gain_fifo_short  += $data['realized_gain_short'];
-                    $realized_gain_fifo_long  += $data['realized_gain_long'];
+                    $realized_gain_fifo_short  += $data['longterm'] ? 0 : $data['realized_gain'];
+                    $realized_gain_fifo_long  += $data['longterm'] ? $data['realized_gain'] : 0;
                 } );
 
                 // calc lifo totals to date
                 $this->calc_fifo_stack( $r, $lifo_stack, $is_fifo = false,
                                        function( $data )
                                         use (&$realized_gain_lifo_short, &$realized_gain_lifo_long ) {
-                                            
-                    $realized_gain_lifo_short  += $data['realized_gain_short'];
-                    $realized_gain_lifo_long  += $data['realized_gain_long'];                    
+
+                    $realized_gain_lifo_short  += $data['longterm'] ? 0 : $data['realized_gain'];
+                    $realized_gain_lifo_long  += $data['longterm'] ? $data['realized_gain'] : 0;
                 } );
             }
             
@@ -676,7 +693,7 @@ avgperp_units_sum: $avgperp_units_sum
             }
 
             // avg cost only changes on in (purchase)
-            $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::int_to_btc($total_btc_in) : 0;
+//            $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::int_to_btc($total_btc_in) : 0;
 
             $btc_out_amount = $r['amount_out'] - $r['amount_in'];
             $fiat_out_amount = $r['fiat_amount_out'] - $r['fiat_amount_in'];
@@ -697,11 +714,15 @@ avgperp_units_sum: $avgperp_units_sum
                 $cost_of_goods_sold_avg_perpetual = btcutil::int_to_btc($r['amount_out']) * $avgperp_unit_cost;
                 $realized_gain_avg_perpetual += ($r['fiat_amount_out'] - $cost_of_goods_sold_avg_perpetual);
 
-                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($total_btc_out) * $avg_cost_periodic;
-                $realized_gain_avg_periodic = $total_fiat_out - $cost_of_goods_sold_avg_periodic;
+//                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($total_btc_out) * $avg_cost_periodic;
+//                $realized_gain_avg_periodic = $total_fiat_out - $cost_of_goods_sold_avg_periodic;
                 
-//                $cost_of_goods_sold_avg_periodic += btcutil::int_to_btc($r['amount_out']) * $avg_cost_periodic;
-//                $realized_gain_avg_periodic += $r['fiat_amount_out'] - $cost_of_goods_sold_avg_periodic;
+                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($r['amount_out'] * $avg_cost_periodic );
+                $realized_gain_avg_periodic += $r['fiat_amount_out'] - $cost_of_goods_sold_avg_periodic;
+                
+echo "==> amount_out: " . btcutil::int_to_btc(  $r['amount_out'] ) . "\n";                
+echo "==> avg_cost_periodic: " . btcutil::fiat_display( $avg_cost_periodic  ) . "\n";                
+echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg_periodic  ) . "\n";                
             }
 
             $total_avg_cost = ( btcutil::int_to_btc($btc_balance) * $avg_cost_periodic);
@@ -795,14 +816,14 @@ avgperp_units_sum: $avgperp_units_sum
             $age = $r['block_time'] - $first['block_time'];
             $longterm = $age > 31536000;  // 1 year.  86400 * 365;
             
+            $orig_qty = $first['qty'];
+            $orig_exchange_rate = $first['exchange_rate'];
             if( $out < $first['qty'] ) {
                 $qty = $out;
                 if( $in_reporting_period ) {
                     $proceeds = $qty * $r['exchange_rate'];
                     $cost_basis = $qty * $first['exchange_rate'];
-                    $amt = btcutil::int_to_btc( $proceeds - $cost_basis ) ;
-                    $realized_gain_fifo_long  = $longterm ? $amt : 0;
-                    $realized_gain_fifo_short = $longterm ? 0 : $amt;
+                    $realized_gain = $proceeds - $cost_basis;
                 }
                 $first['qty'] -= $out;
                 $out = 0;
@@ -812,25 +833,25 @@ avgperp_units_sum: $avgperp_units_sum
                 if( $in_reporting_period ) {
                     $proceeds = $qty * $r['exchange_rate'];
                     $cost_basis = $qty * $first['exchange_rate'];
-                    $amt = btcutil::int_to_btc( $proceeds - $cost_basis ) ;
-                    $realized_gain_fifo_long  = $longterm ? $amt : 0;
-                    $realized_gain_fifo_short = $longterm ? 0 : $amt;
+                    $realized_gain = $proceeds - $cost_basis;
                 }
                 $out -= $first['qty'];
                 $is_fifo ? array_shift( $fifo_stack ) : array_pop( $fifo_stack );
             }
-            
-            if( $in_reporting_period ) {
+
+            if( $in_reporting_period ) {            
                 $data = array(
                     'date_acquired' => $first['block_time'],
                     'date_sold' => $r['block_time'],
+                    'exchange_rate' => $r['exchange_rate'],
+                    'orig_exchange_rate' => $orig_exchange_rate,
                     'qty' => $qty,
-                    'proceeds' => $proceeds,
-                    'cost_basis' => $cost_basis,
-                    'amt' => $amt,
-                    'realized_gain_short' => $realized_gain_fifo_short,
-                    'realized_gain_long' => $realized_gain_fifo_long,
+                    'orig_qty' => $orig_qty,
+                    'proceeds' => btcutil::int_to_btc( $proceeds ),
+                    'cost_basis' => btcutil::int_to_btc( $cost_basis ),
+                    'realized_gain' => btcutil::int_to_btc( $realized_gain ),
                     'longterm' => $longterm,
+                    'in_reporting_period' => $in_reporting_period,
                 );
                 $callback( $data );
             }
@@ -868,18 +889,18 @@ avgperp_units_sum: $avgperp_units_sum
                                              &$cost_basis_total_short, &$cost_basis_total_long,
                                              &$gain_or_loss_total_short, &$gain_or_loss_total_long ) {
                     $longterm = $data['longterm'];
-                    $proceeds = btcutil::int_to_btc( $data['proceeds'] );
-                    $cost_basis = btcutil::int_to_btc( $data['cost_basis'] );
+                    $proceeds = $data['proceeds'];
+                    $cost_basis = $data['cost_basis'];
                     
                     $description_of_property = btcutil::btc_display( $data['qty'] ) . ' Bitcoins';
-                    $gain_or_loss = $longterm ? $data['realized_gain_long'] : $data['realized_gain_short'];
+                    $gain_or_loss = $data['realized_gain'];
                     $proceeds_total_long += $longterm ? $proceeds : 0;
                     $proceeds_total_short += $longterm ? 0 : $proceeds;
                     $cost_basis_total_long += $longterm ? $cost_basis : 0;
                     $cost_basis_total_short += $longterm ? 0 : $cost_basis;
                     $gain_or_loss_total_long += $longterm ? $gain_or_loss : 0;
                     $gain_or_loss_total_short += $longterm ? 0 : $gain_or_loss;
-echo "gain_or_loss_total_short : $gain_or_loss_total_short\n";                    
+
                     $row['Description'] = $description_of_property;
                     $row['Date Acquired'] = gmdate('Y-m-d', $data['date_acquired'] );
                     $row['Date Sold/Disposed'] = gmdate('Y-m-d', $data['date_sold'] );
@@ -916,6 +937,57 @@ echo "gain_or_loss_total_short : $gain_or_loss_total_short\n";
         return $nr;
     }
 
+    
+    protected function gen_report_matrix( $results, $format ) {
+        
+        $params = $this->get_params();
+        $cost_method = $params['cost-method'];
+        
+        $cb = function($a, $b) { return $a['block_time'] == $b['block_time'] ? 0 : $a['block_time'] > $b['block_time'] ? 1 : -1; };
+        usort( $results, $cb );
+                
+        $fifo_stack = array();
+        $proceeds_total_long = $proceeds_total_short = 0;
+        $cost_basis_total_long = $cost_basis_total_short = 0;
+        $gain_or_loss_total_long = $gain_or_loss_total_short = 0;
+                
+        $nr = array();
+        
+        foreach( $results as $r ) {
+            
+            if( $r['amount_in'] ) {
+                $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
+            }
+
+            if( $r['amount_out'] ) {
+                
+                $is_fifo = $cost_method == 'fifo';
+                $this->calc_fifo_stack( $r, $fifo_stack, $is_fifo,
+                                       function( $data )
+                                        use (&$proceeds_total_short, &$proceeds_total_long, &$nr,
+                                             &$cost_basis_total_short, &$cost_basis_total_long,
+                                             &$gain_or_loss_total_short, &$gain_or_loss_total_long ) {
+                    
+                    $row['Date Purchased'] = gmdate('Y-m-d', $data['date_acquired'] );
+                    $row['Original Amount'] = btcutil::btc_display( $data['orig_qty'] );
+                    $row['Amount Sold'] = btcutil::btc_display( $data['qty'] );
+                    $row['Cost Basis Price'] = btcutil::fiat_display( $data['orig_exchange_rate'] );
+                    $row['Total Cost Basis'] = btcutil::fiat_display( $data['cost_basis'] );
+                    $row['Date Sold'] = gmdate('Y-m-d', $data['date_sold'] );
+                    $row['Sale Value Price'] = btcutil::fiat_display( $data['exchange_rate'] );
+                    $row['Total Sale Value'] = btcutil::fiat_display( $data['proceeds'] );
+                    $row['Realized Gain'] = btcutil::fiat_display( $data['realized_gain'] );
+                    $row['Short/Long'] = $data['longterm'] ? 'Long' : 'Short';
+                    
+                    $nr[] = $row;
+                } );
+            }
+        }
+        
+        return $nr;
+    }
+    
+    
     // returns all available columns for standard report.
     protected function all_columns() {
         $params = $this->get_params();

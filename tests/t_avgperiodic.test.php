@@ -27,7 +27,7 @@ class t_avgperiodic extends test_base {
 
         // discrepancy:  libratax shows this value as -0.62.
         $col = 'Realized Gain (AvCost Periodic)';
-        $this->eq( $lastrow[$col], -5.43, $col );
+        $this->eq( $lastrow[$col], -0.62, $col );
 
     }
 }
