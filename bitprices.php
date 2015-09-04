@@ -581,9 +581,6 @@ END;
             $cols[] = 'txweb';
         }
 
-//        $cb = function($a, $b) { return $a['block_time'] == $b['block_time'] ? ($a['amount_in'] > 0 && $b['amount_in'] <= 0 ? 1 : ($a['amount_in'] <= 0 && $b['amount_in'] > 0 ? -1 : 0) ) : $a['block_time'] > $b['block_time'] ? 1 : -1; };
-//        usort( $results, $cb );
-                
         $btc_balance = 0;  $btc_balance_period = 0;
         $fiat_balance = 0; $fiat_balance_period = 0;
         $fiat_balance_now = 0; $fiat_balance_now_period = 0;
@@ -915,9 +912,6 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
         $params = $this->get_params();
         $cost_method = $params['cost-method'];
         
-        $cb = function($a, $b) { return $a['block_time'] == $b['block_time'] ? 0 : $a['block_time'] > $b['block_time'] ? 1 : -1; };
-        usort( $results, $cb );
-                
         $fifo_stack = array();
         $fifo_lot_id = 0;
         
@@ -997,9 +991,6 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
         $params = $this->get_params();
         $cost_method = $params['cost-method'];
         
-        $cb = function($a, $b) { return $a['block_time'] == $b['block_time'] ? 0 : $a['block_time'] > $b['block_time'] ? 1 : -1; };
-        usort( $results, $cb );
-                
         $fifo_stack = array();
         $fifo_lot_id = 0;
         $proceeds_total_long = $proceeds_total_short = 0;
