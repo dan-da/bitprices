@@ -20,10 +20,10 @@ class t_8949_fifo extends test_base {
         $this->eq( $numrows, 28, "Number of rows in report" );        
         
         $col = 'Proceeds';
-        $this->eq( $lastrow[$col], 604.97, "Net Summary Short Proceeds" );
+        $this->eq( $lastrow[$col], 604.98, "Net Summary Short Proceeds" );
 
         $col = 'Cost Basis';
-        $this->eq( $lastrow[$col], 610.49, "Net Summary Short Cost Basis" );
+        $this->eq( $lastrow[$col], 610.47, "Net Summary Short Cost Basis" );
 
         $col = 'Gain/Loss';
         $this->eq( $lastrow[$col], -5.52, "Net Summary Short Gain/Loss" );
@@ -58,10 +58,10 @@ class t_8949_fifo extends test_base {
         $this->eq( $numrows, 26, "Number of rows in report" );        
 
         $col = 'Proceeds';
-        $this->eq( $lastrow[$col], 504.72, "Net Summary Short Proceeds" );
+        $this->eq( $lastrow[$col], 504.73, "Net Summary Short Proceeds" );
 
         $col = 'Cost Basis';
-        $this->eq( $lastrow[$col], 510.16, "Net Summary Short Cost Basis" );
+        $this->eq( $lastrow[$col], 510.14, "Net Summary Short Cost Basis" );
 
         $col = 'Gain/Loss';
         $this->eq( $lastrow[$col], -5.44, "Net Summary Short Gain/Loss" );

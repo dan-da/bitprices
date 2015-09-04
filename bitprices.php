@@ -424,11 +424,11 @@ END;
                 throw new Exception( sprintf( "Could not find %s exchange rate for date '%s'", $currency, date('Y-m-d') ) ); 
             }
             
-            $tx['fiat_amount_in'] = btcutil::int_to_btc( $tx['amount_in'] * $tx['exchange_rate'] );
-            $tx['fiat_amount_out'] = btcutil::int_to_btc( $tx['amount_out'] * $tx['exchange_rate'] );
+            $tx['fiat_amount_in'] = btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate'] );
+            $tx['fiat_amount_out'] = btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate'] );
             
-            $tx['fiat_amount_in_now'] = btcutil::int_to_btc( $tx['amount_in'] * $tx['exchange_rate_now'] );
-            $tx['fiat_amount_out_now'] = btcutil::int_to_btc( $tx['amount_out'] * $tx['exchange_rate_now'] );
+            $tx['fiat_amount_in_now'] = btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate_now'] );
+            $tx['fiat_amount_out_now'] = btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate_now'] );
             
             $tx['fiat_currency'] = $currency;
 //            $tx['is_transfer'] = $this->is_wallet_transfer( $tx['addr_from'], $tx['addr_to'] );
@@ -619,7 +619,7 @@ END;
 
         }
         // avg cost only changes on in (purchase)
-        $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::int_to_btc($total_btc_in) : 0;
+        $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::btcint_to_fiatint($total_btc_in) : 0;
         $total_fiat_in = $total_btc_in = 0;
         
         $fifo_lot_id = 0;
@@ -720,8 +720,8 @@ avgperp_units_sum: $avgperp_units_sum
             }
             
 //var_dump( $avgperp_units_sum,
-//          btcutil::int_to_btc($avgperp_unit_cost * $btc_balance_period),
-//          btcutil::int_to_btc($r['exchange_rate'] * $r['amount_out'] )
+//          btcutil::btcint_to_fiatint($avgperp_unit_cost * $btc_balance_period),
+//          btcutil::btcint_to_fiatint($r['exchange_rate'] * $r['amount_out'] )
 //    );
 //var_dump( $avgperp_units_sum, $avgperp_unit_cost, $cost_of_goods_sold_avg_perpetual );
 //echo "\n";
@@ -739,7 +739,7 @@ avgperp_units_sum: $avgperp_units_sum
             }
 
             // avg cost only changes on in (purchase)
-//            $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::int_to_btc($total_btc_in) : 0;
+//            $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::btcint_to_fiatint($total_btc_in) : 0;
 
             $btc_out_amount = $r['amount_out'] - $r['amount_in'];
             $fiat_out_amount = $r['fiat_amount_out'] - $r['fiat_amount_in'];
@@ -749,31 +749,31 @@ avgperp_units_sum: $avgperp_units_sum
                 $total_fiat_out += $r['fiat_amount_out'];
 
                 $num_tx_out ++;
-//echo "==> total_btc_out: " . btcutil::int_to_btc( $total_btc_out ) . "\n";                
+//echo "==> total_btc_out: " . btcutil::btcint_to_fiatint( $total_btc_out ) . "\n";                
 //echo "==> total_fiatout: " . btcutil::fiat_display( $total_fiat_out ) . "\n";                
                 // See: http://accountingexplained.com/financial/inventories/avco-method
-//              $cost_of_goods_sold_avg_perpetual = btcutil::int_to_btc($total_btc_out) * $avgperp_unit_cost;
+//              $cost_of_goods_sold_avg_perpetual = btcutil::btcint_to_fiatint($total_btc_out) * $avgperp_unit_cost;
 //echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg_perpetual  ) . "\n";                
                 
 //              $realized_gain_avg_perpetual = $total_fiat_out - $cost_of_goods_sold_avg_perpetual;
 
-                $cost_of_goods_sold_avg_perpetual = btcutil::int_to_btc($r['amount_out']) * $avgperp_unit_cost;
+                $cost_of_goods_sold_avg_perpetual = btcutil::btcint_to_fiatint($r['amount_out']) * $avgperp_unit_cost;
                 $realized_gain_avg_perpetual += ($r['fiat_amount_out'] - $cost_of_goods_sold_avg_perpetual);
 
-//                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($total_btc_out) * $avg_cost_periodic;
+//                $cost_of_goods_sold_avg_periodic = btcutil::btcint_to_fiatint($total_btc_out) * $avg_cost_periodic;
 //                $realized_gain_avg_periodic = $total_fiat_out - $cost_of_goods_sold_avg_periodic;
                 
-                $cost_of_goods_sold_avg_periodic = btcutil::int_to_btc($r['amount_out'] * $avg_cost_periodic );
+                $cost_of_goods_sold_avg_periodic = btcutil::btcint_to_fiatint($r['amount_out'] * $avg_cost_periodic );
                 $realized_gain_avg_periodic += $r['fiat_amount_out'] - $cost_of_goods_sold_avg_periodic;
                 
-echo "==> amount_out: " . btcutil::int_to_btc(  $r['amount_out'] ) . "\n";                
+echo "==> amount_out: " . btcutil::btcint_to_fiatint(  $r['amount_out'] ) . "\n";                
 echo "==> avg_cost_periodic: " . btcutil::fiat_display( $avg_cost_periodic  ) . "\n";                
 echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg_periodic  ) . "\n";                
             }
 
-            $total_avg_cost = ( btcutil::int_to_btc($btc_balance) * $avg_cost_periodic);
+            $total_avg_cost = ( btcutil::btcint_to_fiatint($btc_balance) * $avg_cost_periodic);
             
-            $present_fiat_value = btcutil::int_to_btc($btc_balance_period * $r['exchange_rate_now']);
+            $present_fiat_value = btcutil::btcint_to_fiatint($btc_balance_period * $r['exchange_rate_now']);
             $paper_gain = $present_fiat_value - $fiat_balance_period;
             
             $unrealized_gain_fifo = $paper_gain - $realized_gain_fifo;
@@ -895,9 +895,9 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
                     'orig_exchange_rate' => $orig_exchange_rate,
                     'qty' => $qty,
                     'orig_qty' => $orig_qty,
-                    'proceeds' => btcutil::int_to_btc( $proceeds ),
-                    'cost_basis' => btcutil::int_to_btc( $cost_basis ),
-                    'realized_gain' => btcutil::int_to_btc( $realized_gain ),
+                    'proceeds' => btcutil::btcint_to_fiatint( $proceeds ),
+                    'cost_basis' => btcutil::btcint_to_fiatint( $cost_basis ),
+                    'realized_gain' => btcutil::btcint_to_fiatint( $realized_gain ),
                     'longterm' => $longterm,
                     'in_reporting_period' => $in_reporting_period,
                 );
@@ -1295,7 +1295,13 @@ class btcutil {
     // formats usd integer amount for display as decimal amount (rounded)
     static public function fiat_display( $val ) {
         return number_format( round( $val / 100, 2 ), 2, '.', '');
-    }    
+    }
+
+    // converts btc integer amount to decimal amount with full precision.
+    static public function btcint_to_fiatint( $val ) {
+        return (int)round($val / 100000000, 0);
+    }
+    
 }
 
 
