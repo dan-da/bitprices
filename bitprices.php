@@ -247,7 +247,7 @@ class bitprices {
             'gainlossavgperiodic' => array( 'desc' => "Gains and Losses ( Avg. Cost Method, Periodic)", 'cols' => 'date,btcamount,fiatamount,realizedgainavgperiodic,unrealizedgainavgperiodic' ),
             'gainlossavgperpetual' => array( 'desc' => "Gains and Losses ( Avg. Cost Method, Periodic)", 'cols' => 'date,btcamount,fiatamount,realizedgainavgperpetual,unrealizedgainavgperpetual' ),
             'thenandnow' => array( 'desc' => "Then and Now", 'cols' => 'date,price,fiatamount,pricenow,fiatamountnow,fiatgain,fiatgaintotal' ),
-            'inout' => array( 'desc' => "Standard report with Inputs and Outputs", 'cols' => 'date,addrshort,btcamount,btcbalance,price,fiatamount,fiatbalance,pricenow,fiatgaintotal' ),
+            'inout' => array( 'desc' => "Standard report with Inputs and Outputs", 'cols' => 'date,addrshort,btcin,btcout,btcbalance,price,fiatin,fiatout,fiatbalance,pricenow,realizedgainfifo' ),
             'blockchain' => array( 'desc' => "Only columns from blockchain", 'cols' => 'date,time,tx,address,btcin,btcout' ),
             'dev' => array('desc' => "For development", 'cols' => 'date,btcin,btcout,btcbalance,fiatin,fiatout,fiatbalance,price,btcamount,fiatamount,fiatgain,fiatgaintotal,realizedgainfifo,realizedgainlifo,realizedgainavgperiodic' ),
             'all' => array( 'desc' => "All available columns", 'cols' => $all_cols ),
