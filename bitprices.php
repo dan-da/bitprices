@@ -89,6 +89,7 @@ class bitprices {
                                       'api:', 'insight:',
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
+                                      'expand-tx',
                                       ) );        
 
         return $params;
@@ -114,6 +115,8 @@ class bitprices {
         if( !@$params['cost-method'] ) {
             $params['cost-method'] = 'fifo';
         }
+
+        $params['expand-tx'] = isset( $params['expand-tx'] );
         
         if( !@$params['insight'] ) {
             $params['insight'] = 'https://insight.bitpay.com';
@@ -185,6 +188,12 @@ class bitprices {
     // obtains the BTC addresses from user input, either via the
     // --addresses arg or the --addressfile arg.
     protected function get_addresses() {
+        // optimize retrieval.
+        static $addresses = null;
+        if( $addresses ) {
+            return $addresses;
+        }
+        
         $params = $this->get_params();
         
         $list = array();
@@ -209,7 +218,20 @@ class bitprices {
         if( !count( $list ) ) {
             throw new Exception( "No valid addresses to process.", 2 );
         }
+        $addresses = $list;
         return $list;
+    }
+    
+    protected function is_wallet_address( $addr ) {
+        $addrs = $this->get_addresses();
+        
+        // note:  for very large addr lists (wallets) it would be faster to use an assoc array.
+        return in_array( $addr, $addrs );
+    }
+    
+    protected function is_wallet_transfer( $addr_from, $addr_to ) {
+        return $this->is_wallet_address( $addr_from ) &&
+               $this->is_wallet_address( $addr_to );
     }
 
     // returns a key/val array of available column template definitions.
@@ -226,6 +248,7 @@ class bitprices {
             'gainlossavgperpetual' => array( 'desc' => "Gains and Losses ( Avg. Cost Method, Periodic)", 'cols' => 'date,btcamount,fiatamount,realizedgainavgperpetual,unrealizedgainavgperpetual' ),
             'thenandnow' => array( 'desc' => "Then and Now", 'cols' => 'date,price,fiatamount,pricenow,fiatamountnow,fiatgain,fiatgaintotal' ),
             'inout' => array( 'desc' => "Standard report with Inputs and Outputs", 'cols' => 'date,addrshort,btcamount,btcbalance,price,fiatamount,fiatbalance,pricenow,fiatgaintotal' ),
+            'blockchain' => array( 'desc' => "Only columns from blockchain", 'cols' => 'date,time,tx,address,btcin,btcout' ),
             'dev' => array('desc' => "For development", 'cols' => 'date,btcin,btcout,btcbalance,fiatin,fiatout,fiatbalance,price,btcamount,fiatamount,fiatgain,fiatgaintotal,realizedgainfifo,realizedgainlifo,realizedgainavgperiodic' ),
             'all' => array( 'desc' => "All available columns", 'cols' => $all_cols ),
         );
@@ -319,7 +342,7 @@ class bitprices {
     
     --currency=<curr>    symbol supported by bitcoinaverage.com.  default = USD.
     
-    --report-type=<type> tx | schedule_d | matrix.   default=tx
+    --report-type=<type> tx | schedule_d | matrix.    default=tx
                            options --direction, --cols, --list-templates,
                                    --list-cols apply to tx report only.
                            option  --cost-method applies to schedule_d and
@@ -332,7 +355,7 @@ class bitprices {
                          
     --list-templates     if present, a list of templates will be printed.
     --list-cols          if present, a list of columns will be printed.
-                                
+    
     --outfile=<path>     specify output file path.
     --format=<format>    txt|csv|json|jsonpretty|html|all     default=txt
     
@@ -367,9 +390,31 @@ END;
         
         $params = $this->get_params();
         $currency = $params['currency'];
+        
+        // We collapse the list of vin/vout to the level of
+        // individual transactions, unless expand-tx param is present.
+        if( !$params['expand-tx'] ) {
+            $txarr = array();
+            foreach( $trans as $in_out ) {
+                $txid = $in_out['txid'];
+                
+                if( isset($txarr[$txid]) ) {
+                    $tx =& $txarr[$txid];
+                    $tx['amount_in'] += $in_out['amount_in'];
+                    $tx['amount_out'] += $in_out['amount_out'];
+                    $tx['amount'] = $tx['amount_in'] - $tx['amount_out'];
+                }
+                else {
+                    $txarr[$txid] = $in_out;
+                }
+            }
+            $trans = $txarr;
+        }
+        unset( $tx );
 
         $results = array();
         foreach( $trans as $tx ) {
+            
             $tx['exchange_rate'] = $this->get_historic_price( $currency, $tx['block_time'] );
             if( !$tx['exchange_rate'] ) {
                 throw new Exception( sprintf( "Could not find %s exchange rate for date '%s'", $currency, date('Y-m-d', $tx['block_time'] ) ) ); 
@@ -386,6 +431,8 @@ END;
             $tx['fiat_amount_out_now'] = btcutil::int_to_btc( $tx['amount_out'] * $tx['exchange_rate_now'] );
             
             $tx['fiat_currency'] = $currency;
+//            $tx['is_transfer'] = $this->is_wallet_transfer( $tx['addr_from'], $tx['addr_to'] );
+
             $results[] = $tx;
         }
         
@@ -407,7 +454,6 @@ END;
 
     // returns price for currency on UTC date of $timestamp
     protected function get_historic_price( $currency, $timestamp ) {
-        
         $date = gmdate( 'Y-m-d', $timestamp );
         
         $map = self::get_historic_prices( $currency );
@@ -427,7 +473,7 @@ END;
         static $prices = array();
 
         $price = @$prices[$currency];
-        if( false && $price ) {
+        if( $price ) {
             return $price;
         }
 
@@ -535,8 +581,8 @@ END;
             $cols[] = 'txweb';
         }
 
-        $cb = function($a, $b) { return $a['block_time'] == $b['block_time'] ? 0 : $a['block_time'] > $b['block_time'] ? 1 : -1; };
-        usort( $results, $cb );
+//        $cb = function($a, $b) { return $a['block_time'] == $b['block_time'] ? ($a['amount_in'] > 0 && $b['amount_in'] <= 0 ? 1 : ($a['amount_in'] <= 0 && $b['amount_in'] > 0 ? -1 : 0) ) : $a['block_time'] > $b['block_time'] ? 1 : -1; };
+//        usort( $results, $cb );
                 
         $btc_balance = 0;  $btc_balance_period = 0;
         $fiat_balance = 0; $fiat_balance_period = 0;
@@ -578,6 +624,9 @@ END;
         // avg cost only changes on in (purchase)
         $avg_cost_periodic = $total_btc_in ? $total_fiat_in / btcutil::int_to_btc($total_btc_in) : 0;
         $total_fiat_in = $total_btc_in = 0;
+        
+        $fifo_lot_id = 0;
+        $lifo_lot_id = 0;
 
                 
         $nr = array();
@@ -596,8 +645,8 @@ END;
             
             if( $r['amount_in'] ) {
                 // add to end of fifo stack
-                $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
-                $lifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
+                $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$fifo_lot_id );
+                $lifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$lifo_lot_id );
             }
 
             // calc realized gains if it is an output.
@@ -818,6 +867,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
             
             $orig_qty = $first['qty'];
             $orig_exchange_rate = $first['exchange_rate'];
+            $lot_id = $first['lot_id'];
             if( $out < $first['qty'] ) {
                 $qty = $out;
                 if( $in_reporting_period ) {
@@ -841,6 +891,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
 
             if( $in_reporting_period ) {            
                 $data = array(
+                    'lot_id' => $lot_id,
                     'date_acquired' => $first['block_time'],
                     'date_sold' => $r['block_time'],
                     'exchange_rate' => $r['exchange_rate'],
@@ -868,16 +919,19 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
         usort( $results, $cb );
                 
         $fifo_stack = array();
+        $fifo_lot_id = 0;
+        
         $proceeds_total_long = $proceeds_total_short = 0;
         $cost_basis_total_long = $cost_basis_total_short = 0;
         $gain_or_loss_total_long = $gain_or_loss_total_short = 0;
                 
         $nr = array();
         
+        
         foreach( $results as $r ) {
             
             if( $r['amount_in'] ) {
-                $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
+                $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$fifo_lot_id );
             }
 
             if( $r['amount_out'] ) {
@@ -947,6 +1001,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
         usort( $results, $cb );
                 
         $fifo_stack = array();
+        $fifo_lot_id = 0;
         $proceeds_total_long = $proceeds_total_short = 0;
         $cost_basis_total_long = $cost_basis_total_short = 0;
         $gain_or_loss_total_long = $gain_or_loss_total_short = 0;
@@ -956,7 +1011,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
         foreach( $results as $r ) {
             
             if( $r['amount_in'] ) {
-                $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'] );
+                $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$fifo_lot_id );
             }
 
             if( $r['amount_out'] ) {
@@ -968,6 +1023,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
                                              &$cost_basis_total_short, &$cost_basis_total_long,
                                              &$gain_or_loss_total_short, &$gain_or_loss_total_long ) {
                     
+                    $row['Purchase Lot ID'] = $data['lot_id'];
                     $row['Date Purchased'] = gmdate('Y-m-d', $data['date_acquired'] );
                     $row['Original Amount'] = btcutil::btc_display( $data['orig_qty'] );
                     $row['Amount Sold'] = btcutil::btc_display( $data['qty'] );
@@ -987,7 +1043,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
         return $nr;
     }
     
-    
+
     // returns all available columns for standard report.
     protected function all_columns() {
         $params = $this->get_params();
@@ -1232,7 +1288,7 @@ class btcutil {
     
     // converts btc decimal amount to integer amount.
     static public function btc_to_int( $val ) {
-        return (int)($val * 100000000);
+        return (int)round($val * 100000000, 0);
     }
 
     // converts btc integer amount to decimal amount with full precision.
