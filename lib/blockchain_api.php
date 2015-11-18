@@ -17,7 +17,17 @@ class blockchain_api_factory {
     }
 }
 
-class blockchain_api_toshi  {
+
+/**
+ * An implementation of blockchain_api that uses the toshi oracle.
+ *
+ * Supports using any toshi host. Toshi is an open-source project.
+ *
+ * For info about Toshi, see:
+ *  + https://toshi.io/
+ *  + https://github.com/coinbase/toshi
+ */
+class blockchain_api_toshi implements blockchain_api {
     
     public function get_addresses_transactions( $addr_list, $params ) {
         $tx_list = array();
@@ -40,7 +50,11 @@ class blockchain_api_toshi  {
         
         // Todo:  make more robust with timeout, retries, etc.
         $buf = @file_get_contents( $url );
-file_put_contents( '/tmp/toshi.json', $buf );
+
+        $oracle_raw = $params['oracle-raw'];
+        if( $oracle_raw ) {
+            file_put_contents( $oracle_raw, $buf );
+        }
         
         // note: http_response_header is set by file_get_contents.
         // next line will throw exception wth code 1001 if response code not found.
@@ -56,11 +70,16 @@ file_put_contents( '/tmp/toshi.json', $buf );
         $data = json_decode( $buf, true );
         $tx_list = $data['transactions'];
         
+        $oracle_json = $params['oracle-json'];
+        if( $oracle_json ) {
+            file_put_contents( $oracle_json, json_encode( $data,  JSON_PRETTY_PRINT ) );
+        }
+        
         return $this->normalize_transactions( $tx_list, $addr );
     }
     
     protected function normalize_transactions( $tx_list_toshi, $addr ) {
-//print_r( $tx_list_toshi );
+
         $tx_list_toshi = array_reverse( $tx_list_toshi );
         $tx_list_normal = array();
         foreach( $tx_list_toshi as $tx_toshi ) {
@@ -134,6 +153,17 @@ file_put_contents( '/tmp/toshi.json', $buf );
 }
 
 
+/**
+ * An implementation of blockchain_api that uses the btcd oracle.
+ *
+ * Supports using any btcd host. btcd is an open-source project.
+ *
+ * Note: this class requires btcd pull request 516, added on Nov 16, 2015.
+ * https://github.com/btcsuite/btcd/pull/516
+ *
+ * For info about btcd, see:
+ *  + https://github.com/btcsuite/btcd
+ */
 class blockchain_api_btcd implements blockchain_api {
     
     public function get_addresses_transactions( $addr_list, $params ) {
@@ -152,30 +182,33 @@ class blockchain_api_btcd implements blockchain_api {
         
         $url = sprintf( 'http://%s:%s@%s:%s/', $params['btcd-rpc-user'], $params['btcd-rpc-pass'],
                                           $params['btcd-rpc-host'], $params['btcd-rpc-port']);
-        // echo $url . "\n";
         $rpc = new BitcoinClient( $url, false, 'BTC' );
         
         $tx_limit = (int)$params['addr-tx-limit'];
-        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=$tx_limit, $vinExtra=1, $filterAddr=1 );
+        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=$tx_limit, $vinExtra=1, $reverse=false, $filterAddr=array( $addr ) );
         mylogger()->log( "Received transactions from btcd.", mylogger::info );
-
-file_put_contents( '/tmp/btcd.json', json_encode( $tx_list,  JSON_PRETTY_PRINT ) );
         
-//        print_r( $tx_list );  exit;
-//        exit;
+        $oracle_raw = $params['oracle-raw'];
+        if( $oracle_raw ) {
+            file_put_contents( $oracle_raw, $rpc->last_response() );
+        }
+
+        $oracle_json = $params['oracle-json'];
+        if( $oracle_json ) {
+            file_put_contents( $oracle_json, json_encode( $tx_list,  JSON_PRETTY_PRINT ) );
+        }
         
         return $this->normalize_transactions( $tx_list, $addr );
     }
     
     protected function normalize_transactions( $tx_list_btcd, $addr ) {
-//print_r( $tx_list_btcd );        
+
         $tx_list_normal = array();
         foreach( $tx_list_btcd as $tx_btcd ) {
             
             $idx = 0;
             $not_understood = array( 'multisig' );
             foreach( $tx_btcd['vout'] as $output ) {
-//print_r( $output ); exit;
                 $idx ++;
                 $addresses = @$output['scriptPubKey']['addresses'];
                 
@@ -250,8 +283,18 @@ file_put_contents( '/tmp/btcd.json', json_encode( $tx_list,  JSON_PRETTY_PRINT )
     
 }
 
-// Bitpay Insight using multi address api.
-// note: experimental.  not recommended for use.
+/**
+ * An implementation of blockchain_api that uses the insight oracle
+ * with multi-address support.
+ *
+ * note: experimental.  problems may occur with multiple addresses.
+ *       not recommended for use.
+ *
+ * Supports using any insight host. insight is an open-source project.
+ *
+ * For info about insight, see:
+ *  + https://github.com/bitpay/insight
+ */
 class blockchain_api_insight_multiaddr  {
     
     public function get_addresses_transactions( $addr_list, $params ) {
@@ -279,11 +322,19 @@ class blockchain_api_insight_multiaddr  {
         }
 
         mylogger()->log( "Received transactions from insight server.", mylogger::info );
-        // file_put_contents( '/tmp/insight_multiaddr.json', $buf );
-
+        
+        $oracle_raw = $params['oracle-raw'];
+        if( $oracle_raw ) {
+            file_put_contents( $oracle_raw, $buf );
+        }        
         
         $data = json_decode( $buf, true );
         $tx_list = @$data['items'];
+
+        $oracle_json = $params['oracle-json'];
+        if( $oracle_json ) {
+            file_put_contents( $oracle_json, json_encode( $data,  JSON_PRETTY_PRINT ) );
+        }
         
         return $this->normalize_transactions( $tx_list, $addr_list );
     }
@@ -299,7 +350,6 @@ class blockchain_api_insight_multiaddr  {
         
         $last_used_addr = null;
         
-//print_r( $tx_list_insight );        
         $tx_list_normal = array();
         foreach( $tx_list_insight as $tx_insight ) {
             $amount_in = 0;
@@ -376,7 +426,15 @@ class blockchain_api_insight_multiaddr  {
     
 }
 
-
+/**
+ * An implementation of blockchain_api that uses the insight oracle
+ * with single-address support.
+ *
+ * Supports using any insight host. insight is an open-source project.
+ *
+ * For info about insight, see:
+ *  + https://github.com/bitpay/insight
+ */
 class blockchain_api_insight  {
     
     public function get_addresses_transactions( $addr_list, $params ) {
@@ -413,11 +471,19 @@ class blockchain_api_insight  {
         }
         
         mylogger()->log( "Received transactions from insight server.", mylogger::info );
-        // file_put_contents( '/tmp/insight.json', $buf );        
+        
+        $oracle_raw = $params['oracle-raw'];
+        if( $oracle_raw ) {
+            file_put_contents( $oracle_raw, $buf );
+        }        
         
         $data = json_decode( $buf, true );
         $tx_list = @$data['txs'];
-//print_r( $tx_list ); exit;
+        
+        $oracle_json = $params['oracle-json'];
+        if( $oracle_json ) {
+            file_put_contents( $oracle_json, json_encode( $data,  JSON_PRETTY_PRINT ) );
+        }
         
         return $this->normalize_transactions( $tx_list, $addr );
     }
@@ -443,8 +509,6 @@ class blockchain_api_insight  {
             $tx_list_insight = array_merge( $tx_list_insight, $txlist );
         }
 
-        
-//print_r( $tx_list_insight );        
         $tx_list_normal = array();
         foreach( $tx_list_insight as $tx_insight ) {            
             $amount_in = (int)0;

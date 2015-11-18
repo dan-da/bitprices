@@ -90,6 +90,7 @@ class bitprices {
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
                                       'expand-tx',
+                                      'oracle-raw:', 'oracle-json:'
                                       ) );        
 
         return $params;
@@ -130,11 +131,16 @@ class bitprices {
         }
 
         if( !@$params['btcd-rpc-host'] ) {
-            $params['btcd-rpc-port'] = '127.0.0.1';  // use localhost
+            $params['btcd-rpc-host'] = '127.0.0.1';  // use localhost
         }
         
         if( !@$params['btcd-rpc-port'] ) {
             $params['btcd-rpc-port'] = 8334;  // use default port.
+        }
+        
+        if( $params['api'] == 'btcd' && (!@$params['btcd-rpc-user'] || !@$params['btcd-rpc-pass']) ) {
+            echo( "btcd-rpc-user and btcd-rpc-pass must be set when using api=btcd\n" );
+            return 1;
         }
 
         if( !@$params['addr-tx-limit'] ) {
@@ -153,6 +159,8 @@ class bitprices {
         
         $params['format'] = @$params['format'] ?: 'txt';
 
+        $params['oracle-raw'] = @$params['oracle-raw'] ?: null;
+        $params['oracle-json'] = @$params['oracle-json'] ?: null;
 
         // note: get_cols internally calls get_params and uses params[currency]
         $this->params = $params;        
@@ -375,6 +383,10 @@ class bitprices {
     
     --addr-tx-limit=<n> per address transaction limit. default = 1000
     --testnet           use testnet. only affects addr validation.
+    
+    --oracle-raw=<p>    path to save raw server response, optional.
+    --oracle-json=<p>   path to save formatted server response, optional.
+    
 
 
 END;

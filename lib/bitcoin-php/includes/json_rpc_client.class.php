@@ -54,6 +54,13 @@ class json_rpc_client {
      * @var boolean
      */
     private $notification = false;
+
+    /**
+     * copy of last response body from server.
+     *
+     * @var string
+     */
+    private $last_response;
     
     /**
      * Takes the connection parameters
@@ -112,6 +119,7 @@ class json_rpc_client {
         if (!$response) {
             throw new Exception('Unable to connect to '.$this->url, 0);
         }
+        $this->last_response = $response;
         $response = json_decode($response,true);
         
         // check response id
@@ -196,6 +204,7 @@ class json_rpc_client {
             echo $this->debug;
         }
         
+        $this->last_response = $response;
         $response = json_decode($response,true);
         
         // check response id
@@ -215,6 +224,15 @@ class json_rpc_client {
         // return
         return @$response['result'];
 
+    }
+
+    /**
+     * Returns body of last server response, or null.
+     *
+     * @return string
+     */
+    public function last_response() {
+        return $this->last_response;
     }
 }
 ?>
