@@ -150,8 +150,15 @@ class blockchain_api_btcd implements blockchain_api {
         $rpc = new BitcoinClient( $url, false, 'BTC' );
         
         $tx_limit = (int)$params['addr-tx-limit'];
-        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=$tx_limit, $vinExtra=1, $reverse=false, $filterAddrs=array( $addr ) );
-        mylogger()->log( "Received transactions from btcd.", mylogger::info );
+        try {
+            $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=$tx_limit, $vinExtra=1, $reverse=false, $filterAddrs=array( $addr ) );
+            mylogger()->log( "Received transactions from btcd.", mylogger::info );
+        }
+        catch( Exception $e ) {
+            mylogger()->log_exception($e);
+            mylogger()->log( "Handled exception while calling btcd::searchrawtransactions.  continuing", mylogger::warning );
+            $tx_list = [];
+        }
         return $this->normalize_transactions( $tx_list, $addr );
     }
     
