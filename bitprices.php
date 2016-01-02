@@ -101,13 +101,17 @@ class bitprices {
         }
 
         if( !@$params['btcd-rpc-host'] ) {
-            $params['btcd-rpc-port'] = '127.0.0.1';  // use localhost
+            $params['btcd-rpc-host'] = '127.0.0.1';  // use localhost
         }
         
         if( !@$params['btcd-rpc-port'] ) {
             $params['btcd-rpc-port'] = 8334;  // use default port.
         }
-        
+
+        if( $params['api'] == 'btcd' && (!@$params['btcd-rpc-user'] || !@$params['btcd-rpc-pass']) ) {
+            echo( "btcd-rpc-user and btcd-rpc-pass must be set when using api=btcd\n" );
+            return false;
+        }
 
         if( !@$params['addr-tx-limit'] ) {
             $params['addr-tx-limit'] = 1000;
@@ -534,19 +538,20 @@ END;
             unset( $row['TxWeb'] );
         }
 
-        if( @$results[0] ) {
-            $header = array_keys( $results[0] );
-        }
-        
-        else {
-           // bail.
-           return;
-        }
-        
         $table = new html_table();
         $table->header_attrs = array();
         $table->table_attrs = array( 'class' => 'bitprices bordered' );
-        $html = $table->table_with_header( $results, $header );
+
+        if( @$results[0] ) {
+            $header = array_keys( $results[0] );
+            $html = $table->table_with_header( $results, $header );
+        }
+        
+        else {
+           $results = [ ["No transactions found."] ];
+            $html = $table->table( $results );
+        }
+        
         
         fwrite( $fh, $html );
     }

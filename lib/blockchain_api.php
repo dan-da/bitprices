@@ -150,12 +150,15 @@ class blockchain_api_btcd implements blockchain_api {
         $rpc = new BitcoinClient( $url, false, 'BTC' );
         
         $tx_limit = (int)$params['addr-tx-limit'];
-        $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=$tx_limit, $vinExtra=1, $filterAddr=1 );
-        mylogger()->log( "Received transactions from btcd.", mylogger::info );
-
-//        print_r( $tx_list );  exit;
-//        exit;
-        
+        try {
+            $tx_list = $rpc->searchrawtransactions( $addr, $verbose=1, $skip=0, $count=$tx_limit, $vinExtra=1, $reverse=false, $filterAddrs=array( $addr ) );
+            mylogger()->log( "Received transactions from btcd.", mylogger::info );
+        }
+        catch( Exception $e ) {
+            mylogger()->log_exception($e);
+            mylogger()->log( "Handled exception while calling btcd::searchrawtransactions.  continuing", mylogger::warning );
+            $tx_list = [];
+        }
         return $this->normalize_transactions( $tx_list, $addr );
     }
     
@@ -223,7 +226,7 @@ class blockchain_api_btcd implements blockchain_api {
             }
             $amount = $amount_in - $amount_out;
 
-            $tx_list_normal[] = array( 'block_time' => $tx_btcd['blocktime'],
+            $tx_list_normal[] = array( 'block_time' => @$tx_btcd['blocktime'],
                                        'addr' => $addr,
                                        'amount' => $amount,
                                        'amount_in' => $amount_in,
@@ -340,7 +343,7 @@ class blockchain_api_insight_multiaddr  {
             }
             $amount = $amount_in - $amount_out;
                         
-            $tx_list_normal[] = array( 'block_time' => $tx_insight['blocktime'],
+            $tx_list_normal[] = array( 'block_time' => @$tx_insight['blocktime'],
                                        'addr' => $last_used_addr,
                                        'amount' => $amount,
                                        'amount_in' => $amount_in,
@@ -456,7 +459,7 @@ class blockchain_api_insight  {
             }
             $amount = $amount_in - $amount_out;
                         
-            $tx_list_normal[] = array( 'block_time' => $tx_insight['blocktime'],
+            $tx_list_normal[] = array( 'block_time' => @$tx_insight['blocktime'],
                                        'addr' => $addr,
                                        'amount' => $amount,
                                        'amount_in' => $amount_in,
