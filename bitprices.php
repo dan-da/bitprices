@@ -61,13 +61,15 @@ class bitprices {
         $addrs = $this->get_addresses();
         $results = $this->process_addresses( $addrs );
         
+        $meta = null;
+        
         switch( $report_type ) {
             case 'schedule_d': $rows = $this->gen_report_schedule_d( $results, $format );  break;
             case 'matrix': $rows = $this->gen_report_matrix( $results, $format );  break;
-            default: $rows = $this->gen_report_tx( $results, $format ); break;
+            default: list($rows, $meta) = $this->gen_report_tx( $results, $format ); break;
         }
 
-        $this->print_results( $rows, $format );
+        $this->print_results( $rows, $meta, $format );
         
         $end = microtime(true);
         $duration = $end - $start;
@@ -90,7 +92,8 @@ class bitprices {
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
                                       'expand-tx',
-                                      'oracle-raw:', 'oracle-json:'
+                                      'oracle-raw:', 'oracle-json:',
+                                      'tx-scope:',
                                       ) );        
 
         return $params;
@@ -118,6 +121,8 @@ class bitprices {
         }
 
         $params['expand-tx'] = isset( $params['expand-tx'] );
+
+        $params['tx-scope'] = @$params['tx-scope'] ?: 'external';
         
         if( !@$params['insight'] ) {
             $params['insight'] = 'https://insight.bitpay.com';
@@ -344,6 +349,8 @@ class bitprices {
     --api=<api>          toshi|btcd|insight.   default = toshi.
     
     --direction=<dir>    transactions in | out | both   default = both.
+    --tx-scope=<scope>   internal | external | both  default = external.
+    --expand-tx          Include each in/out instead of tx summary.
     
     --date-start=<date>  Look for transactions since date. default = all.
     --date-end=<date>    Look for transactions until date. default = now.
@@ -403,6 +410,21 @@ END;
         $params = $this->get_params();
         $currency = $params['currency'];
         
+        usort( $trans, function($a, $b) {
+            $a = $a['block_time'];
+            $b = $b['block_time'];
+            if( $a == $b ) {
+                return 0;
+            }
+            return ($a < $b) ? -1 : 1;
+        });
+        
+        if( $params['tx-scope'] != 'both' ) {
+            $trans_tmp = [];
+            foreach( $trans as $in_out ) {
+            }
+        }
+        
         // We collapse the list of vin/vout to the level of
         // individual transactions, unless expand-tx param is present.
         if( !$params['expand-tx'] ) {
@@ -410,11 +432,22 @@ END;
             foreach( $trans as $in_out ) {
                 $txid = $in_out['txid'];
                 
+                // note: addr field will be the first address seen.
+                
                 if( isset($txarr[$txid]) ) {
                     $tx =& $txarr[$txid];
                     $tx['amount_in'] += $in_out['amount_in'];
                     $tx['amount_out'] += $in_out['amount_out'];
                     $tx['amount'] = $tx['amount_in'] - $tx['amount_out'];
+                    
+                    // ensure that addr is the send address if tx amount is negative.
+                    if( $in_out['amount_out'] > 0 && $tx['amount'] < 0 ) {
+                        $tx['addr'] = $in_out['addr'];
+                    }
+                    // ensure that addr is a receive address if tx amount is positive.
+                    else if( $in_out['amount_in'] > 0 && $tx['amount'] > 0 ) {
+                        $tx['addr'] = $in_out['addr'];
+                    }
                 }
                 else {
                     $txarr[$txid] = $in_out;
@@ -585,14 +618,6 @@ END;
         $params = $this->get_params();
         $direction = $params['direction'];
         
-        // This is an ugly hack so that html format will always include
-        // addressweb and txweb columns at the end.  For use in linking to block explorers.
-        $cols = $params['cols'];
-        if( $format == 'html' ) {
-            $cols[] = 'addressweb';
-            $cols[] = 'txweb';
-        }
-
         $btc_balance = 0;  $btc_balance_period = 0;
         $fiat_balance = 0; $fiat_balance_period = 0;
         $fiat_balance_now = 0; $fiat_balance_now_period = 0;
@@ -637,8 +662,8 @@ END;
         $fifo_lot_id = 0;
         $lifo_lot_id = 0;
 
-                
-        $nr = array();
+        $nr = [];
+        $metalist = [];
         foreach( $results as $r ) {
             
             $btc_amount = $r['amount_in'] - $r['amount_out'];
@@ -795,18 +820,21 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
             
             $fc = strtoupper( $r['fiat_currency'] );
                        
-            $row = array();
+            $row = [];
+            $meta = [];
 
+            $meta['addr'] = $r['addr'];
+            $meta['tx'] = $r['txid'];
+            
             $map = $this->all_columns();
 
-            foreach( $cols as $col ) {
+            foreach( $params['cols'] as $col ) {
                 $cn = $map[$col];   // column name
                 switch( $col ) {
                     case 'date': $row[$cn] = date('Y-m-d', $r['block_time'] ); break;
                     case 'time': $row[$cn] = date('H:i:s', $r['block_time'] ); break;
                     case 'addrshort': $row[$cn] = $this->shorten_addr( $r['addr'] ); break;
                     case 'address': $row[$cn] = $r['addr']; break;
-                    case 'addressweb': $row[$cn] = $r['addr']; break;
                     case 'btcin': $row[$cn] = btcutil::btc_display( $r['amount_in'] ); break;
                     case 'btcout': $row[$cn] = btcutil::btc_display( $r['amount_out'] ); break;
                     case 'btcbalance': $row[$cn] = btcutil::btc_display( $btc_balance ); break;
@@ -848,14 +876,13 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
 
                     case 'txshort': $row[$cn] = $this->shorten_addr( $r['txid'] ); break;
                     case 'tx': $row[$cn] = $r['txid']; break;
-                    case 'txweb': $row[$cn] = $r['txid']; break;
                 }
             }
             $nr[] = $row;
-            
+            $metalist[] = $meta;
         }
-        
-        return $nr;
+
+        return array( $nr, $metalist );
     }
     
     // calculate realized gains using fifo or lifo method.
@@ -1104,7 +1131,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
 
     // prints out single report in one of several possible formats,
     // or multiple reports, one for each possible format.
-    protected function print_results( $results, $format ) {
+    protected function print_results( $results, $meta, $format ) {
         $params = $this->get_params();
         $outfile = @$params['outfile'];
         
@@ -1118,16 +1145,16 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
                                     pathinfo($outfile, PATHINFO_FILENAME),
                                     $format );
                 
-                $this->print_results_worker( $results, $outfile, $format );
+                $this->print_results_worker( $results, $meta, $outfile, $format );
             }
         }
         else {
-            $this->print_results_worker( $results, $outfile, $format );
+            $this->print_results_worker( $results, $meta, $outfile, $format );
         }
     }
 
     // prints out single report in specified format, either to stdout or file.
-    protected function print_results_worker( $results, $outfile, $format ) {
+    protected function print_results_worker( $results, $meta, $outfile, $format ) {
 
         $fname = $outfile ?: 'php://stdout';
         $fh = fopen( $fname, 'w' );
@@ -1136,7 +1163,7 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
             case 'txt':  self::write_results_fixed_width( $fh, $results ); break;
             case 'csv':  self::write_results_csv( $fh, $results ); break;
             case 'json':  self::write_results_json( $fh, $results ); break;
-            case 'html':  self::write_results_html( $fh, $results ); break;
+            case 'html':  self::write_results_html( $fh, $results, $meta ); break;
             case 'jsonpretty':  self::write_results_jsonpretty( $fh, $results ); break;
         }
 
@@ -1169,46 +1196,48 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
     }
 
     // writes out results in html format
-    static public function write_results_html( $fh, $results ) {
+    static public function write_results_html( $fh, $results, $meta ) {
+        for( $i = 0; $i < count($results); $i ++ ) {
+            $row =& $results[$i];
+            $addr = @$meta[$i]['addr'];
+            $tx = @$meta[$i]['tx'];
+
+            if( $addr && $tx ) {
+                $addr_url = sprintf( 'http://blockchain.info/address/%s', $addr );
+                $tx_url = sprintf( 'http://blockchain.info/tx/%s', $tx );
         
-        foreach( $results as &$row ) {
-            
-            $addr_url = sprintf( 'http://blockchain.info/address/%s', $row['AddressWeb'] );
-            $tx_url = sprintf( 'http://blockchain.info/tx/%s', $row['TxWeb'] );
-    
-            if( isset( $row['Date'] ) ) {
-                $row['Date'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Date'] );
+                if( isset( $row['Date'] ) ) {
+                    $row['Date'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Date'] );
+                }
+                if( isset( $row['Addr Short'] ) ) {
+                    $row['Addr Short'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Addr Short'] );
+                }
+                if( isset( $row['Address'] ) ) {
+                    $row['Address'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Address'] );
+                }
+                if( isset( $row['Tx Short'] ) ) {
+                    $row['Tx Short'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx Short'] );
+                }
+                if( isset( $row['Tx'] ) ) {
+                    $row['Tx'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx'] );
+                }
             }
-            if( isset( $row['Addr Short'] ) ) {
-                $row['Addr Short'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Addr Short'] );
-            }
-            if( isset( $row['Address'] ) ) {
-                $row['Address'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Address'] );
-            }
-            if( isset( $row['Tx Short'] ) ) {
-                $row['Tx Short'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx Short'] );
-            }
-            if( isset( $row['Tx'] ) ) {
-                $row['Tx'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx'] );
-            }
-            
-            unset( $row['AddressWeb'] );
-            unset( $row['TxWeb'] );
         }
 
-        if( @$results[0] ) {
-            $header = array_keys( $results[0] );
-        }
-        
-        else {
-           // bail.
-           return;
-        }
-        
         $table = new html_table();
         $table->header_attrs = array();
         $table->table_attrs = array( 'class' => 'bitprices bordered' );
-        $html = $table->table_with_header( $results, $header );
+
+        if( @$results[0] ) {
+            $header = array_keys( $results[0] );
+            $html = $table->table_with_header( $results, $header );
+        }
+        
+        else {
+           $results = [ ["No transactions found."] ];
+            $html = $table->table( $results );
+        }
+        
         
         fwrite( $fh, $html );
     }
