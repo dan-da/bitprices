@@ -460,20 +460,14 @@ END;
         $results = array();
         foreach( $trans as $tx ) {
             
-            $tx['exchange_rate'] = $this->get_historic_price( $currency, $tx['block_time'] );
-            if( !$tx['exchange_rate'] ) {
-                throw new Exception( sprintf( "Could not find %s exchange rate for date '%s'", $currency, date('Y-m-d', $tx['block_time'] ) ) ); 
-            }
-            $tx['exchange_rate_now'] = $this->get_24_hour_avg_price_cached( $currency );
-            if( !$tx['exchange_rate_now'] ) {
-                throw new Exception( sprintf( "Could not find %s exchange rate for date '%s'", $currency, date('Y-m-d') ) ); 
-            }
+            $tx['exchange_rate'] = $er = $this->get_historic_price( $currency, $tx['block_time'] );
+            $tx['exchange_rate_now'] = $ern = $this->get_24_hour_avg_price_cached( $currency );
             
-            $tx['fiat_amount_in'] = btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate'] );
-            $tx['fiat_amount_out'] = btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate'] );
+            $tx['fiat_amount_in'] = $er ? btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate'] ) : null;
+            $tx['fiat_amount_out'] = $er ? btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate'] ) : null;
             
-            $tx['fiat_amount_in_now'] = btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate_now'] );
-            $tx['fiat_amount_out_now'] = btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate_now'] );
+            $tx['fiat_amount_in_now'] = $ern ? btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate_now'] ) : null;
+            $tx['fiat_amount_out_now'] = $ern ? btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate_now'] ) : null;
             
             $tx['fiat_currency'] = $currency;
 //            $tx['is_transfer'] = $this->is_wallet_transfer( $tx['addr_from'], $tx['addr_to'] );
@@ -579,9 +573,12 @@ END;
         }
         
         $fname = dirname(__FILE__) . sprintf( '/price_history/per_day_all_time_history.%s.csv', $currency );
-        $file_age = time() - filemtime( $fname );
+        $exists = file_exists( $fname );
+        if( $exists ) {
+            $file_age = time() - filemtime( $fname );
+        }
         
-        if( !file_exists( $fname ) || $file_age > 60*60*12 ) {
+        if( !$exists || $file_age > 60*60*12 ) {
             $dir = dirname( $fname );
             file_exists($dir) || mkdir( $dir );
             
