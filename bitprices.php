@@ -91,7 +91,7 @@ class bitprices {
                                       'api:', 'insight:',
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
-                                      'expand-tx',
+                                      'summarize-tx:',
                                       'oracle-raw:', 'oracle-json:',
                                       'tx-scope:',
                                       ) );        
@@ -120,7 +120,7 @@ class bitprices {
             $params['cost-method'] = 'fifo';
         }
 
-        $params['expand-tx'] = isset( $params['expand-tx'] );
+        $params['summarize-tx'] = @$params['summarize-tx'] == 'no' ? false : true;
 
         $params['tx-scope'] = @$params['tx-scope'] ?: 'external';
         
@@ -350,7 +350,8 @@ class bitprices {
     
     --direction=<dir>    transactions in | out | both   default = both.
     --tx-scope=<scope>   internal | external | both  default = external.
-    --expand-tx          Include each in/out instead of tx summary.
+    --summarize-tx=<b>   yes|no  default = yes
+                           Use one row per each tx, even when change address(es)
     
     --date-start=<date>  Look for transactions since date. default = all.
     --date-end=<date>    Look for transactions until date. default = now.
@@ -426,8 +427,8 @@ END;
         }
         
         // We collapse the list of vin/vout to the level of
-        // individual transactions, unless expand-tx param is present.
-        if( !$params['expand-tx'] ) {
+        // individual transactions when summarize-tx param is present.
+        if( $params['summarize-tx'] ) {
             $txarr = array();
             foreach( $trans as $in_out ) {
                 $txid = $in_out['txid'];
@@ -890,9 +891,9 @@ echo "==> cost_of_goods_sold: " . btcutil::fiat_display( $cost_of_goods_sold_avg
         $out = $r['amount_out'];
         
         while( $out > 0 && count($fifo_stack) ) {
-            $first = $fifo_stack[0];
+            $first =& $fifo_stack[0];
             if( !$is_fifo ) {
-                $first = $fifo_stack[count($fifo_stack)-1];
+                $first =& $fifo_stack[count($fifo_stack)-1];
             }
 
             $age = $r['block_time'] - $first['block_time'];
