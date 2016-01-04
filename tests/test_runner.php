@@ -107,7 +107,7 @@ class test_printer {
 class bitpricescmd {
     
     // note: api_args should be set by main() based on config file or prog args.
-    static public $api_args = " --api=btcd --btcd-rpc-host='127.0.0.1' --btcd-rpc-port='38334' --btcd-rpc-user='btcd' --btcd-rpc-pass='btcdpass'";
+    static public $api_args = " --api=btcd --btcd-rpc-host='127.0.0.1' --btcd-rpc-port='8334' --btcd-rpc-user='btcd' --btcd-rpc-pass='btcdpass'";
     
     static public function run( $args, $expect_rc=0 ) {
         $cmd = sprintf( "%s %s", dirname(__FILE__) . "/../bitprices.php", $args );
