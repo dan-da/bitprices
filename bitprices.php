@@ -97,7 +97,6 @@ class bitprices {
                                       'report-type:', 'cost-method:',
                                       'summarize-tx:',
                                       'oracle-raw:', 'oracle-json:',
-                                      'tx-scope:',
                                       ) );        
 
         return $params;
@@ -137,8 +136,6 @@ class bitprices {
 
         $params['summarize-tx'] = @$params['summarize-tx'] == 'no' ? false : true;
 
-        $params['tx-scope'] = @$params['tx-scope'] ?: 'external';
-        
         if( !@$params['insight'] ) {
             $params['insight'] = 'https://insight.bitpay.com';
         }
@@ -422,7 +419,6 @@ class bitprices {
     --api=<api>          toshi|btcd|insight.   default = toshi.
     
     --direction=<dir>    transactions in | out | both   default = both.
-    --tx-scope=<scope>   internal | external | both  default = external.
     --summarize-tx=<b>   yes|no  default = yes
                            Use one row per each tx, even when change address(es)
     
@@ -490,13 +486,6 @@ END;
             }
             return ($a < $b) ? -1 : 1;
         });
-*/
-/*
-        if( $params['tx-scope'] != 'both' ) {
-            $trans_tmp = [];
-            foreach( $trans as $in_out ) {
-            }
-        }
 */
         
         // We collapse the list of vin/vout to the level of
