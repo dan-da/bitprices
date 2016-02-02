@@ -1,7 +1,7 @@
 <?php
 
 interface blockchain_api {
-    public function get_addresses_transactions( $addr_list, $params );
+    public function get_addresses_transactions( $addr_list, $start_time, $end_time, $params );
 }
 
 class blockchain_api_factory {
@@ -29,16 +29,16 @@ class blockchain_api_factory {
  */
 class blockchain_api_toshi implements blockchain_api {
     
-    public function get_addresses_transactions( $addr_list, $params ) {
+    public function get_addresses_transactions( $addr_list, $start_time, $end_time, $params ) {
         $tx_list = array();
         foreach( $addr_list as $addr ) {
-            $tx_list_new = $this->get_address_transactions( $addr, $params );
+            $tx_list_new = $this->get_address_transactions( $addr, $start_time, $end_time, $params );
             $tx_list = array_merge( $tx_list, $tx_list_new );
         }
         return $tx_list;
     }
     
-    private function get_address_transactions( $addr, $params ) {
+    private function get_address_transactions( $addr, $start_time, $end_time, $params ) {
         
         $tx_method = $params['toshi-fast'] ? 'transactionsfiltered' : 'transactions';
         $addr_tx_limit = $params['addr-tx-limit'];
@@ -75,14 +75,20 @@ class blockchain_api_toshi implements blockchain_api {
             file_put_contents( $oracle_json, json_encode( $data,  JSON_PRETTY_PRINT ) );
         }
         
-        return $this->normalize_transactions( $tx_list, $addr );
+        return $this->normalize_transactions( $tx_list, $addr, $start_time, $end_time );
     }
     
-    protected function normalize_transactions( $tx_list_toshi, $addr ) {
+    protected function normalize_transactions( $tx_list_toshi, $addr, $start_time, $end_time ) {
 
         $tx_list_toshi = array_reverse( $tx_list_toshi );
         $tx_list_normal = array();
         foreach( $tx_list_toshi as $tx_toshi ) {
+            
+            $in_period = $tx_toshi['block_time'] >= $start_time && $tx_toshi['block_time'] <= $end_time;
+            if( !$in_period ) {
+                continue;
+            }
+            
             $amount_in = 0;
             $amount_out = 0;
             $amount = 0;
@@ -166,16 +172,16 @@ class blockchain_api_toshi implements blockchain_api {
  */
 class blockchain_api_btcd implements blockchain_api {
     
-    public function get_addresses_transactions( $addr_list, $params ) {
+    public function get_addresses_transactions( $addr_list, $start_time, $end_time, $params ) {
         $tx_list = array();
         foreach( $addr_list as $addr ) {
-            $tx_list_new = $this->get_address_transactions( $addr, $params );
+            $tx_list_new = $this->get_address_transactions( $addr, $start_time, $end_time, $params );
             $tx_list = array_merge( $tx_list, $tx_list_new );
         }
         return $tx_list;
     }
     
-    private function get_address_transactions( $addr, $params ) {
+    private function get_address_transactions( $addr, $start_time, $end_time, $params ) {
 
         $btcd = sprintf( '%s:%s', $params['btcd-rpc-host'], $params['btcd-rpc-port'] );
         mylogger()->log( "Retrieving transactions from btcd $btcd", mylogger::info );
@@ -198,13 +204,17 @@ class blockchain_api_btcd implements blockchain_api {
             file_put_contents( $oracle_json, json_encode( $tx_list,  JSON_PRETTY_PRINT ) );
         }
         
-        return $this->normalize_transactions( $tx_list, $addr );
+        return $this->normalize_transactions( $tx_list, $addr, $start_time, $end_time );
     }
     
-    protected function normalize_transactions( $tx_list_btcd, $addr ) {
+    protected function normalize_transactions( $tx_list_btcd, $addr, $start_time, $end_time ) {
 
         $tx_list_normal = array();
         foreach( $tx_list_btcd as $tx_btcd ) {
+            $in_period = $tx_btcd['blocktime'] >= $start_time && $tx_btcd['blocktime'] <= $end_time;
+            if( !$in_period ) {
+                continue;
+            }           
             
             $idx = 0;
             $not_understood = array( 'multisig' );
@@ -297,7 +307,7 @@ class blockchain_api_btcd implements blockchain_api {
  */
 class blockchain_api_insight_multiaddr  {
     
-    public function get_addresses_transactions( $addr_list, $params ) {
+    public function get_addresses_transactions( $addr_list, $start_time, $end_time, $params ) {
         
         $addr_tx_limit = $params['addr-tx-limit'];
         $addrs = implode( ',', $addr_list );
@@ -336,10 +346,10 @@ class blockchain_api_insight_multiaddr  {
             file_put_contents( $oracle_json, json_encode( $data,  JSON_PRETTY_PRINT ) );
         }
         
-        return $this->normalize_transactions( $tx_list, $addr_list );
+        return $this->normalize_transactions( $tx_list, $addr_list, $start_time, $end_time );
     }
     
-    protected function normalize_transactions( $tx_list_insight, $addr_list ) {
+    protected function normalize_transactions( $tx_list_insight, $addr_list, $start_time, $end_time ) {
         array_reverse( $tx_list_insight );
         
         // make a map for faster lookup in case of large address lists.
@@ -352,6 +362,12 @@ class blockchain_api_insight_multiaddr  {
         
         $tx_list_normal = array();
         foreach( $tx_list_insight as $tx_insight ) {
+            
+            $in_period = $tx_insight['blocktime'] >= $start_time && $tx_insight['blocktime'] <= $end_time;
+            if( !$in_period ) {
+                continue;
+            }
+            
             $amount_in = 0;
             $amount_out = 0;
             $amount = 0;
@@ -437,16 +453,16 @@ class blockchain_api_insight_multiaddr  {
  */
 class blockchain_api_insight  {
     
-    public function get_addresses_transactions( $addr_list, $params ) {
+    public function get_addresses_transactions( $addr_list, $start_time, $end_time, $params ) {
         $tx_list = array();
         foreach( $addr_list as $addr ) {
-            $tx_list_new = $this->get_address_transactions( $addr, $params );
+            $tx_list_new = $this->get_address_transactions( $addr, $start_time, $end_time, $params );
             $tx_list = array_merge( $tx_list, $tx_list_new );
         }
         return $tx_list;
     }
     
-    protected function get_address_transactions( $addr, $params ) {
+    protected function get_address_transactions( $addr, $start_time, $end_time, $params ) {
         
         // note:  insight /api/txs does not presently seem to support a limit.
         $addr_tx_limit = $params['addr-tx-limit'];
@@ -485,7 +501,7 @@ class blockchain_api_insight  {
             file_put_contents( $oracle_json, json_encode( $data,  JSON_PRETTY_PRINT ) );
         }
         
-        return $this->normalize_transactions( $tx_list, $addr );
+        return $this->normalize_transactions( $tx_list, $addr, $start_time, $end_time );
     }
     
     protected function normalize_transactions( $tx_list_insight, $addr ) {
@@ -495,7 +511,14 @@ class blockchain_api_insight  {
         $tx_list_insight = array_reverse( $tx_list_insight );
         $date_map = array();
         foreach( $tx_list_insight as $tx ) {
+
             $time = $tx['blocktime'];
+            
+            $in_period = $time >= $start_time && $time <= $end_time;
+            if( !$in_period ) {
+                continue;
+            }
+            
             if( isset( $date_map[$time] ) ) {
                 $date_map[$time][] = $tx;
             }

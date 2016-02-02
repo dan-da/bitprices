@@ -58,8 +58,12 @@ class bitprices {
         
         $start = microtime( true );
         
-        $addrs = $this->get_addresses();
-        $results = $this->process_addresses( $addrs );
+        $tx_list = $this->gettxfromuser();
+        if( !$tx_list ) {
+            $addrs = $this->get_addresses();
+            $tx_list = $this->get_matching_transactions( $addrs );
+        }
+        $results = $this->process_transactions( $tx_list );
         
         $meta = null;
         
@@ -80,7 +84,7 @@ class bitprices {
     // returns the CLI params, exactly as entered by user.
     protected function get_cli_params() {
         $params = getopt( 'g', array( 'date-start:', 'date-end:',
-                                      'addresses:', 'addressfile:',
+                                      'addresses:', 'addressfile:', 'txfile:',
                                       'direction:', 'currency:',
                                       'cols:', 'outfile:',
                                       'format:', 'logfile:',
@@ -118,6 +122,17 @@ class bitprices {
         
         if( !@$params['cost-method'] ) {
             $params['cost-method'] = 'fifo';
+        }
+
+        // these three are mutually exclusive.
+        $cnt = 0;
+        $cnt += @$params['addresses'] ? 1 : 0;
+        $cnt += @$params['addressfile'] ? 1 : 0;
+        $cnt += @$params['txfile'] ? 1 : 0;
+        
+        if( $cnt != 1 ) {
+            $this->print_help();
+            return 1;
         }
 
         $params['summarize-tx'] = @$params['summarize-tx'] == 'no' ? false : true;
@@ -185,10 +200,6 @@ class bitprices {
             $this->print_help();
             return 1;
         }
-        if( !@$params['addresses'] && !@$params['addressfile'] ) {
-            $this->print_help();
-            return 1;
-        }
         
         return 0;
     }
@@ -233,6 +244,65 @@ class bitprices {
         }
         $addresses = $list;
         return $list;
+    }
+    
+    protected function gettxfromuser() {
+        
+        $params = $this->get_params();
+        $txfile = @$params['txfile'];
+        if( !$txfile ) {
+            return null;
+        }
+        
+        $start_time = $params['date-start'];
+        $end_time = $params['date-end'] + 86400 -1;
+        
+        $cb = function( $row, $count ) use(&$start_time, &$end_time) {
+            
+            $txtime = strtotime($row['date']);
+            
+            $in_period = $txtime >= $start_time && $txtime <= $end_time;
+            if( !$in_period ) {
+                return null;
+            }
+            
+            return array( 'block_time' => $txtime,
+                          'addr' => $row['dest'],
+                          'amount' => $row['amt'],
+                          'amount_in' => $row['amt'] > 0 ? $row['amt'] : 0,
+                          'amount_out' => $row['amt'] < 0 ? abs($row['amt']) : 0,
+                          'txid' => $count,
+                          'exchange_rate' => $row['spotval'],
+                        );        
+        };
+        
+        return $this->getlibrataxcsv($txfile, $cb);
+    }
+        
+    protected function getlibrataxcsv( $txfile, $row_cb = null ) {
+
+        $lines = file( $txfile );
+        array_shift($lines); // remove header row
+        $rows = [];
+        foreach( $lines as $l ) {
+            list( $date, $dest, $note, $amt, $asset, $spotval, $totalval, $taxtype, $category ) = str_getcsv( $l );
+            $row = [
+                'date' => $date,
+                'dest' => $dest,
+                'note' => $note,
+                'amt' => btcutil::btc_to_int($amt),
+                'asset' => $asset,
+                'spotval' => ((int)($spotval*1000))/10,
+                'totalval' => $totalval,
+                'taxtype' => $taxtype,
+                'category' => $category
+            ];
+            $row = $row_cb ? $row_cb( $row, count($rows) + 1 ) : $row;
+            if( $row ) {
+                $rows[] = $row;
+            }
+        }
+        return $rows;
     }
     
     protected function is_wallet_address( $addr ) {
@@ -345,6 +415,9 @@ class bitprices {
     
     --addresses=<csv>    comma separated list of bitcoin addresses
     --addressfile=<path> file containing bitcoin addresses, one per line.
+    --txfile=<path>      file containing transactions in libratax csv format.
+    
+                         note: addresses, addressfile and txfile are exclusive.
     
     --api=<api>          toshi|btcd|insight.   default = toshi.
     
@@ -403,14 +476,12 @@ END;
         
     }
 
-    // retrieves transactions and price data for one or more bitcoin addresses.
-    protected function process_addresses( $addrs ) {
-        
-        $trans = $this->get_matching_transactions( $addrs );
+    // processes transactions and price data for one or more bitcoin addresses.
+    protected function process_transactions( $trans ) {
         
         $params = $this->get_params();
         $currency = $params['currency'];
-        
+/*
         usort( $trans, function($a, $b) {
             $a = $a['block_time'];
             $b = $b['block_time'];
@@ -419,12 +490,14 @@ END;
             }
             return ($a < $b) ? -1 : 1;
         });
-        
+*/
+/*
         if( $params['tx-scope'] != 'both' ) {
             $trans_tmp = [];
             foreach( $trans as $in_out ) {
             }
         }
+*/
         
         // We collapse the list of vin/vout to the level of
         // individual transactions when summarize-tx param is present.
@@ -461,7 +534,9 @@ END;
         $results = array();
         foreach( $trans as $tx ) {
             
-            $tx['exchange_rate'] = $er = $this->get_historic_price( $currency, $tx['block_time'] );
+            $er = @$tx['exchange_rate'] ?: $this->get_historic_price( $currency, $tx['block_time'] );
+            
+            $tx['exchange_rate'] = $er;
             $tx['exchange_rate_now'] = $ern = $this->get_24_hour_avg_price_cached( $currency );
             
             $tx['fiat_amount_in'] = $er ? btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate'] ) : null;
@@ -485,9 +560,12 @@ END;
      */
     protected function get_matching_transactions( $addrs ) {
         $params = $this->get_params();
-        
+
         $api = blockchain_api_factory::instance( $params['api'] );
-        $tx_list = $api->get_addresses_transactions( $addrs, $params );
+        $tx_list = $api->get_addresses_transactions( $addrs,
+                                                     $params['date-start'],
+                                                     $params['date-end'] +3600*24-1,
+                                                     $params );
         
         return $tx_list;
     }
@@ -607,7 +685,7 @@ END;
 
     // shortens a bitcoin address to abc...xyz form.
     protected function shorten_addr( $address ) {
-        return substr( $address, 0, 3 ) . '..' . substr( $address, -3 );
+        return strlen( $address ) > 8 ? substr( $address, 0, 3 ) . '..' . substr( $address, -3 ) : $address;
     }
 
     // generates the tx (transaction) report. 
@@ -706,7 +784,7 @@ END;
             
             $realized_gain_fifo = $realized_gain_fifo_long + $realized_gain_fifo_short;
             $realized_gain_lifo = $realized_gain_lifo_long + $realized_gain_lifo_short;
-            
+
             // calc alltime totals.
             if( $r['amount_in'] ) {
                 $total_fiat_in_alltime += $r['fiat_amount_in'];
@@ -903,7 +981,6 @@ avgperp_units_sum: $avgperp_units_sum
     protected function calc_fifo_stack( $r, &$fifo_stack, $is_fifo, $callback ) {
         $params = $this->get_params();
 
-        $in_reporting_period = $r['block_time'] >= $params['date-start'] && $r['block_time'] <= $params['date-end'] +3600*24-1;
         $out = $r['amount_out'];
         
         while( $out > 0 && count($fifo_stack) ) {
@@ -920,42 +997,35 @@ avgperp_units_sum: $avgperp_units_sum
             $lot_id = $first['lot_id'];
             if( $out < $first['qty'] ) {
                 $qty = $out;
-                if( $in_reporting_period ) {
-                    $proceeds = $qty * $r['exchange_rate'];
-                    $cost_basis = $qty * $first['exchange_rate'];
-                    $realized_gain = $proceeds - $cost_basis;
-                }
+                $proceeds = $qty * $r['exchange_rate'];
+                $cost_basis = $qty * $first['exchange_rate'];
+                $realized_gain = $proceeds - $cost_basis;
                 $first['qty'] -= $out;
                 $out = 0;
             }
             else {
                 $qty = $first['qty'];
-                if( $in_reporting_period ) {
-                    $proceeds = $qty * $r['exchange_rate'];
-                    $cost_basis = $qty * $first['exchange_rate'];
-                    $realized_gain = $proceeds - $cost_basis;
-                }
+                $proceeds = $qty * $r['exchange_rate'];
+                $cost_basis = $qty * $first['exchange_rate'];
+                $realized_gain = $proceeds - $cost_basis;
                 $out -= $first['qty'];
                 $is_fifo ? array_shift( $fifo_stack ) : array_pop( $fifo_stack );
             }
 
-            if( $in_reporting_period ) {            
-                $data = array(
-                    'lot_id' => $lot_id,
-                    'date_acquired' => $first['block_time'],
-                    'date_sold' => $r['block_time'],
-                    'exchange_rate' => $r['exchange_rate'],
-                    'orig_exchange_rate' => $orig_exchange_rate,
-                    'qty' => $qty,
-                    'orig_qty' => $orig_qty,
-                    'proceeds' => btcutil::btcint_to_fiatint( $proceeds ),
-                    'cost_basis' => btcutil::btcint_to_fiatint( $cost_basis ),
-                    'realized_gain' => btcutil::btcint_to_fiatint( $realized_gain ),
-                    'longterm' => $longterm,
-                    'in_reporting_period' => $in_reporting_period,
+            $data = array(
+                'lot_id' => $lot_id,
+                'date_acquired' => $first['block_time'],
+                'date_sold' => $r['block_time'],
+                'exchange_rate' => $r['exchange_rate'],
+                'orig_exchange_rate' => $orig_exchange_rate,
+                'qty' => $qty,
+                'orig_qty' => $orig_qty,
+                'proceeds' => btcutil::btcint_to_fiatint( $proceeds ),
+                'cost_basis' => btcutil::btcint_to_fiatint( $cost_basis ),
+                'realized_gain' => btcutil::btcint_to_fiatint( $realized_gain ),
+                'longterm' => $longterm,
                 );
                 $callback( $data );
-            }
         }
     }
 
@@ -967,14 +1037,12 @@ avgperp_units_sum: $avgperp_units_sum
         
         $fifo_stack = array();
         $fifo_lot_id = 0;
-        
-        $proceeds_total_long = $proceeds_total_short = 0;
-        $cost_basis_total_long = $cost_basis_total_short = 0;
-        $gain_or_loss_total_long = $gain_or_loss_total_short = 0;
-                
+
+        $totals = array( 'short' => array( 'proceeds' => 0, 'cost_basis' => 0, 'gain' => 0),
+                         'long'  => array( 'proceeds' => 0, 'cost_basis' => 0, 'gain' => 0) );
+
         $nr = array();
-        
-        
+
         foreach( $results as $r ) {
             
             if( $r['amount_in'] ) {
@@ -985,22 +1053,24 @@ avgperp_units_sum: $avgperp_units_sum
                 
                 $is_fifo = $cost_method == 'fifo';
                 $this->calc_fifo_stack( $r, $fifo_stack, $is_fifo,
-                                       function( $data )
-                                        use (&$proceeds_total_short, &$proceeds_total_long, &$nr,
-                                             &$cost_basis_total_short, &$cost_basis_total_long,
-                                             &$gain_or_loss_total_short, &$gain_or_loss_total_long ) {
+                                       function( $data ) use (&$nr, &$totals) {
                     $longterm = $data['longterm'];
                     $proceeds = $data['proceeds'];
                     $cost_basis = $data['cost_basis'];
+                    $gain_or_loss = $data['realized_gain'];
                     
                     $description_of_property = btcutil::btc_display( $data['qty'] ) . ' Bitcoins';
-                    $gain_or_loss = $data['realized_gain'];
-                    $proceeds_total_long += $longterm ? $proceeds : 0;
-                    $proceeds_total_short += $longterm ? 0 : $proceeds;
-                    $cost_basis_total_long += $longterm ? $cost_basis : 0;
-                    $cost_basis_total_short += $longterm ? 0 : $cost_basis;
-                    $gain_or_loss_total_long += $longterm ? $gain_or_loss : 0;
-                    $gain_or_loss_total_short += $longterm ? 0 : $gain_or_loss;
+                    
+                    if( $longterm ) {
+                        $totals['long']['proceeds'] += $proceeds;
+                        $totals['long']['cost_basis'] += $cost_basis;
+                        $totals['long']['gain'] += $gain_or_loss;
+                    }
+                    else {
+                        $totals['short']['proceeds'] += $proceeds;
+                        $totals['short']['cost_basis'] += $cost_basis;
+                        $totals['short']['gain'] += $gain_or_loss;
+                    }                    
 
                     $row['Description'] = $description_of_property;
                     $row['Date Acquired'] = gmdate('Y-m-d', $data['date_acquired'] );
@@ -1019,19 +1089,19 @@ avgperp_units_sum: $avgperp_units_sum
         $row['Description'] = '';
         $row['Date Acquired'] = '';
         $row['Date Sold/Disposed'] = 'Net Summary Long:';
-        $row['Proceeds'] = btcutil::fiat_display( $proceeds_total_long );
-        $row['Cost Basis'] = btcutil::fiat_display( $cost_basis_total_long );
-        $row['Gain/Loss'] = btcutil::fiat_display( $gain_or_loss_total_long );
+        $row['Proceeds'] = btcutil::fiat_display( $totals['long']['proceeds'] );
+        $row['Cost Basis'] = btcutil::fiat_display( $totals['long']['cost_basis'] );
+        $row['Gain/Loss'] = btcutil::fiat_display( $totals['long']['gain'] );
         $row['Short/Long-term'] = '';
         $nr[] = $row;
-
+    
         // Add Net Summary Short row 
         $row['Description'] = '';
         $row['Date Acquired'] = '';
         $row['Date Sold/Disposed'] = 'Net Summary Short:';
-        $row['Proceeds'] = btcutil::fiat_display( $proceeds_total_short );
-        $row['Cost Basis'] = btcutil::fiat_display( $cost_basis_total_short );
-        $row['Gain/Loss'] = btcutil::fiat_display( $gain_or_loss_total_short );
+        $row['Proceeds'] = btcutil::fiat_display( $totals['short']['proceeds'] );
+        $row['Cost Basis'] = btcutil::fiat_display( $totals['short']['cost_basis'] );
+        $row['Gain/Loss'] = btcutil::fiat_display( $totals['short']['gain'] );
         $row['Short/Long-term'] = '';
         $nr[] = $row;
         
@@ -1087,6 +1157,7 @@ avgperp_units_sum: $avgperp_units_sum
         return $nr;
     }
     
+    
 
     // returns all available columns for standard report.
     protected function all_columns() {
@@ -1122,8 +1193,8 @@ avgperp_units_sum: $avgperp_units_sum
             'fiatgaintotalperiod' => $curr . ' Total Gain Period',
 
             'realizedgain' => 'Realized Gain',
-            'realizedgainlong' => 'Realized Gain',
-            'realizedgainshort' => 'Realized Gain',
+            'realizedgainlong' => 'Realized Gain (Long)',
+            'realizedgainshort' => 'Realized Gain (Short)',
             'unrealizedgain' => 'Unrealized Gain',
             
             'realizedgainfifo' => 'Realized Gain (FIFO)',
@@ -1339,7 +1410,7 @@ class btcutil {
     
     // converts btc decimal amount to integer amount.
     static public function btc_to_int( $val ) {
-        return (int)round($val * 100000000, 0);
+        return ((int)(($val * 100000000)*10))/10;
     }
 
     // converts btc integer amount to decimal amount with full precision.
@@ -1349,17 +1420,17 @@ class btcutil {
 
     // formats btc integer amount for display as decimal amount (rounded)   
     static public function btc_display( $val ) {
-        return number_format( round( $val / SATOSHI, 8 ), 8, '.', '');
+        return number_format( round($val / SATOSHI,8), 8, '.', '');
     }
 
     // formats usd integer amount for display as decimal amount (rounded)
     static public function fiat_display( $val ) {
-        return number_format( round( $val / 100, 2 ), 2, '.', '');
+        return number_format( round($val / 100,3), 2, '.', '');
     }
 
     // converts btc integer amount to decimal amount with full precision.
     static public function btcint_to_fiatint( $val ) {
-        return (int)round($val / 100000000, 0);
+        return round($val / 100000000, 0);
     }
     
 }
