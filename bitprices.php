@@ -117,7 +117,7 @@ class bitprices {
             mylogger()->set_log_file( $params['logfile'] );
             mylogger()->echo_log = false;
         }
-        
+               
         if( !@$params['api'] ) {
             $params['api'] = 'toshi';
         }
@@ -128,17 +128,6 @@ class bitprices {
         
         if( !@$params['cost-method'] ) {
             $params['cost-method'] = 'fifo';
-        }
-
-        // these three are mutually exclusive.
-        $cnt = 0;
-        $cnt += @$params['addresses'] ? 1 : 0;
-        $cnt += @$params['addressfile'] ? 1 : 0;
-        $cnt += @$params['txfile'] ? 1 : 0;
-        
-        if( $cnt != 1 ) {
-            $this->print_help();
-            return 1;
         }
 
         $params['summarize-tx'] = @$params['summarize-tx'] == 'no' ? false : true;
@@ -191,7 +180,7 @@ class bitprices {
         $params['cols'] = $this->get_cols( @$params['cols'] ?: 'standard' );
         
         $this->params = $params;
-        
+
         if( isset( $params['list-templates'] ) ) {
             $this->print_list_templates();
             return 2;
@@ -200,11 +189,24 @@ class bitprices {
             $this->print_list_cols();
             return 2;
         }        
+        
+        // these three are mutually exclusive.
+        $cnt = 0;
+        $cnt += @$params['addresses'] ? 1 : 0;
+        $cnt += @$params['addressfile'] ? 1 : 0;
+        $cnt += @$params['txfile'] ? 1 : 0;
+        
+        if( $cnt != 1 ) {
+            $this->print_help();
+            return 1;
+        }
+        
         if( !isset($params['g']) ) {
             $this->print_help();
             return 1;
         }
         
+                
         return 0;
     }
 
@@ -329,10 +331,10 @@ class bitprices {
     protected function get_col_templates() {
         $all_cols = implode( ',', array_keys( $this->all_columns() ) );
         $map = array(
-            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,price,fiatamount' ),
+            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,price,fiatamount,fiatamountnow,fiatgain' ),
             'balance' => array( 'desc' => "Balance report", 'cols' => 'date,addrshort,btcin,btcout,realizedgain,btcbalance', 'notes' => 'Equivalent to LibraTax: Balance report.' ),
-            'gainloss' => array( 'desc' => "Gains and Losses", 'cols' => 'date,btcamount,fiatamount,realizedgainshort,realizedgainlong' ),
-            'gainlossmethods' => array( 'desc' => "Gains and Losses Method Comparison", 'cols' => 'date,btcamount,fiatamount,realizedgainfifo,realizedgainlifo' ),
+            'realizedgain' => array( 'desc' => "Realized Gain", 'cols' => 'date,btcamount,fiatamount,realizedgainshort,realizedgainlong' ),
+            'realizedgainmethods' => array( 'desc' => "Realized Gain Method Comparison", 'cols' => 'date,btcamount,fiatamount,realizedgainfifo,realizedgainlifo' ),
             'thenandnow' => array( 'desc' => "Then and Now", 'cols' => 'date,price,fiatamount,pricenow,fiatamountnow,fiatgain' ),
             'inout' => array( 'desc' => "Standard report with Inputs and Outputs", 'cols' => 'date,addrshort,btcin,btcout,price,fiatin,fiatout' ),
             'blockchain' => array( 'desc' => "Only columns from blockchain", 'cols' => 'date,time,tx,address,btcin,btcout' ),
