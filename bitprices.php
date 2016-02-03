@@ -344,7 +344,7 @@ END;
         }
         
         $fname = dirname(__FILE__) . sprintf( '/price_history/per_day_all_time_history.%s.csv', $currency );
-        $file_age = time() - filemtime( $fname );
+        $file_age = time() - @filemtime( $fname );
         
         if( !file_exists( $fname ) || $file_age > 60*60*12 ) {
             $dir = dirname( $fname );
