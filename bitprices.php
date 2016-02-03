@@ -102,6 +102,7 @@ class bitprices {
                                       'report-type:', 'cost-method:',
                                       'summarize-tx:',
                                       'oracle-raw:', 'oracle-json:',
+                                      'version',
                                       ) );        
 
         return $params;
@@ -181,6 +182,11 @@ class bitprices {
         
         $this->params = $params;
 
+        if( isset( $params['version'] ) ) {
+            $this->print_version();
+            return 2;
+        }
+        
         if( isset( $params['list-templates'] ) ) {
             $this->print_list_templates();
             return 2;
@@ -419,6 +425,14 @@ class bitprices {
         echo json_encode( $colmap, JSON_PRETTY_PRINT ) . "\n\n";
     }
 
+    /**
+     * prints program version text
+     */
+    public function print_version() {
+        $version = @file_get_contents(  __DIR__ . '/VERSION');
+        echo $version ?: 'version unknown' . "\n";
+    }    
+    
     /**
      * prints CLI help text
      */
