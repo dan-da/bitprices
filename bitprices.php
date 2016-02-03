@@ -40,6 +40,9 @@ function main( $argv ) {
     }
 }
 
+/**
+ * Main App
+ */
 class bitprices {
 
     // where all the work starts and ends.
@@ -81,7 +84,9 @@ class bitprices {
         
     }    
 
-    // returns the CLI params, exactly as entered by user.
+    /**
+     * returns the CLI params, exactly as entered by user.
+     */
     protected function get_cli_params() {
         $params = getopt( 'g', array( 'date-start:', 'date-end:',
                                       'addresses:', 'addressfile:', 'txfile:',
@@ -102,8 +107,10 @@ class bitprices {
         return $params;
     }
 
-    // processes and normalizes the CLI params. adds defaults
-    // and ensure each value is set.
+    /**
+     * processes and normalizes the CLI params. adds defaults
+     * and ensure each value is set.
+     */
     protected function process_cli_params( $params ) {
         
         if( @$params['logfile'] ) {
@@ -201,13 +208,17 @@ class bitprices {
         return 0;
     }
 
-    // returns the normalized CLI params, after initial processing/sanitization.
+    /**
+     * returns the normalized CLI params, after initial processing/sanitization.
+     */
     protected function get_params() {
         return $this->params;
     }
 
-    // obtains the BTC addresses from user input, either via the
-    // --addresses arg or the --addressfile arg.
+    /**
+     * obtains the BTC addresses from user input, either via the
+     *    --addresses arg or the --addressfile arg.
+     */
     protected function get_addresses() {
         // optimize retrieval.
         static $addresses = null;
@@ -242,7 +253,11 @@ class bitprices {
         $addresses = $list;
         return $list;
     }
-    
+
+    /**
+     * obtains transactions in libratax CSV format when --txfile flag
+     * is present.
+     */
     protected function gettxfromuser() {
         
         $params = $this->get_params();
@@ -263,6 +278,7 @@ class bitprices {
                 return null;
             }
             
+            // note: libratax does not include an address for all transactions.
             return array( 'block_time' => $txtime,
                           'addr' => $row['dest'],
                           'amount' => $row['amt'],
@@ -275,7 +291,10 @@ class bitprices {
         
         return $this->getlibrataxcsv($txfile, $cb);
     }
-        
+
+    /**
+     * parses a libratax transaction CSV file.
+     */
     protected function getlibrataxcsv( $txfile, $row_cb = null ) {
 
         $lines = file( $txfile );
@@ -301,33 +320,22 @@ class bitprices {
         }
         return $rows;
     }
-    
-    protected function is_wallet_address( $addr ) {
-        $addrs = $this->get_addresses();
-        
-        // note:  for very large addr lists (wallets) it would be faster to use an assoc array.
-        return in_array( $addr, $addrs );
-    }
-    
-    protected function is_wallet_transfer( $addr_from, $addr_to ) {
-        return $this->is_wallet_address( $addr_from ) &&
-               $this->is_wallet_address( $addr_to );
-    }
 
-    // returns a key/val array of available column template definitions.
-    // column templates are simply named lists of columns that should appear
-    // in the tx report.
+    /**
+     * returns a key/val array of available column template definitions.
+     * column templates are simply named lists of columns that should appear
+     * in the tx report.
+     */
     protected function get_col_templates() {
         $all_cols = implode( ',', array_keys( $this->all_columns() ) );
         $map = array(
-            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,btcbalance,price,fiatamount,fiatbalance,pricenow,realizedgain' ),
+            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,price,fiatamount' ),
             'balance' => array( 'desc' => "Balance report", 'cols' => 'date,addrshort,btcin,btcout,realizedgain,btcbalance', 'notes' => 'Equivalent to LibraTax: Balance report.' ),
             'gainloss' => array( 'desc' => "Gains and Losses", 'cols' => 'date,btcamount,fiatamount,realizedgainshort,realizedgainlong' ),
             'gainlossmethods' => array( 'desc' => "Gains and Losses Method Comparison", 'cols' => 'date,btcamount,fiatamount,realizedgainfifo,realizedgainlifo' ),
-            'thenandnow' => array( 'desc' => "Then and Now", 'cols' => 'date,price,fiatamount,pricenow,fiatamountnow,fiatgain,fiatgaintotal' ),
-            'inout' => array( 'desc' => "Standard report with Inputs and Outputs", 'cols' => 'date,addrshort,btcin,btcout,btcbalance,price,fiatin,fiatout,fiatbalance,pricenow,realizedgain' ),
+            'thenandnow' => array( 'desc' => "Then and Now", 'cols' => 'date,price,fiatamount,pricenow,fiatamountnow,fiatgain' ),
+            'inout' => array( 'desc' => "Standard report with Inputs and Outputs", 'cols' => 'date,addrshort,btcin,btcout,price,fiatin,fiatout' ),
             'blockchain' => array( 'desc' => "Only columns from blockchain", 'cols' => 'date,time,tx,address,btcin,btcout' ),
-            'dev' => array('desc' => "For development", 'cols' => 'date,btcin,btcout,btcbalance,fiatin,fiatout,fiatbalance,price,btcamount,fiatamount,fiatgain,fiatgaintotal,realizedgain' ),
             'all' => array( 'desc' => "All available columns", 'cols' => $all_cols ),
         );
         foreach( $map as $k => $info ) {
@@ -335,12 +343,15 @@ class bitprices {
         }
         return $map;
     }
-    
-    // parses the --cols argument and returns an array of columns.
-    // note that the --cols argument accepts either:
-    //   a csv list of columns   -- or --
-    //   a template name + csv list of columns.
-    // For the latter case, the template name is expanded to a column list.
+
+    /**
+     * parses the --cols argument and returns an array of columns.
+     * note that the --cols argument accepts either:
+     *   a csv list of columns   -- or --
+     *   a template name + csv list of columns.
+     *   
+     * For the latter case, the template name is expanded to a column list.
+     */
     protected function get_cols( $arg ) {
         $arg = $this->strip_whitespace( $arg );
         
@@ -365,13 +376,17 @@ class bitprices {
         return $cols;
     }
 
-    // removes whitespace from a string    
+    /**
+     * removes whitespace from a string
+     */
     protected function strip_whitespace( $str ) {
         return preg_replace('/\s+/', '', $str);
     }
 
-    // a function to append strings and add newlines+indent as necessary.
-    // TODO: save elsewhere. no longer used.
+    /**
+     * a function to append strings and add newlines+indent as necessary.
+     * TODO: save elsewhere. no longer used.
+     */
     public function str_append_indent( $str, $append, $prefix, $maxlinechr = 80 ) {
         $lines = explode( "\n", $str );
         $lastline = $lines[count($lines)-1];
@@ -379,22 +394,32 @@ class bitprices {
         $str .= $exceeds ? ("\n" . $prefix . $append) : $append;
         return $str;
     }
-    
-    // prints help text for --list-templates
-    // note: output is pretty JSON for both human and machine readability.
+
+    /**
+     * prints help text for --list-templates
+     * note: output is pretty JSON for both human and machine readability.
+     */
     public function print_list_templates() {
         $tpl = $this->get_col_templates();
         echo json_encode( $tpl, JSON_PRETTY_PRINT )  . "\n\n";
     }
 
-    // prints help text for --list-cols
-    // note: output is pretty JSON for both human and machine readability.
+    /**
+     * prints help text for --list-cols
+     * note: output is pretty JSON for both human and machine readability.
+     */
     public function print_list_cols() {
         $map = $this->all_columns();
-        echo json_encode( $map, JSON_PRETTY_PRINT ) . "\n\n";
+        $colmap = [];
+        foreach( $map as $k => $v ) {
+            $colmap[$k] = $v['title'];
+        }
+        echo json_encode( $colmap, JSON_PRETTY_PRINT ) . "\n\n";
     }
 
-    // prints CLI help text
+    /**
+     * prints CLI help text
+     */
     public function print_help() {
          
         $buf = <<< END
@@ -470,12 +495,14 @@ END;
         
     }
 
-    // processes transactions and price data for one or more bitcoin addresses.
+    /**
+     * processes transactions and price data for one or more bitcoin addresses.
+     */
     protected function process_transactions( $trans ) {
         
         $params = $this->get_params();
         $currency = $params['currency'];
-/*
+
         usort( $trans, function($a, $b) {
             $a = $a['block_time'];
             $b = $b['block_time'];
@@ -484,7 +511,6 @@ END;
             }
             return ($a < $b) ? -1 : 1;
         });
-*/
         
         // We collapse the list of vin/vout to the level of
         // individual transactions when summarize-tx param is present.
@@ -556,7 +582,9 @@ END;
         return $tx_list;
     }
 
-    // returns price for currency on UTC date of $timestamp
+     /**
+      * returns price for currency on UTC date of $timestamp
+      */
     protected function get_historic_price( $currency, $timestamp ) {
         $date = gmdate( 'Y-m-d', $timestamp );
         
@@ -571,8 +599,10 @@ END;
         return $price;
     }
 
-    // retrieves the 24 hour avg price from cache if present and not stale.
-    // stale is defined as 1 hour.
+    /**
+     * retrieves the 24 hour avg price from cache if present and not stale.
+     * stale is defined as 1 hour.
+     */
     protected function get_24_hour_avg_price_cached( $currency ) {
         static $prices = array();
 
@@ -605,8 +635,10 @@ END;
         return $price;
     }
 
-    // retrieves the avg price for currency during the past 24 hours.
-    // TODO: abstract for multiple providers.    
+    /**
+     * retrieves the avg price for currency during the past 24 hours.
+     * TODO: abstract for multiple providers.
+     */
     protected function get_24_hour_avg_price( $currency ) {
 
         $url_mask = 'https://api.bitcoinaverage.com/ticker/global/%s/';
@@ -618,9 +650,11 @@ END;
         return (int)($data['24h_avg'] * 100);
     }
 
-    // retrieves all historic prices for $currency, from cache if present and
-    // not stale.  stale is defined as older than 12 hours.
-    // TODO: abstract for multiple providers.    
+    /**
+     * retrieves all historic prices for $currency, from cache if present and
+     * not stale.  stale is defined as older than 12 hours.
+     * TODO: abstract for multiple providers.
+     */
     protected static function get_historic_prices($currency) {
         
         static $maps = array();
@@ -669,12 +703,16 @@ END;
         return $map;
     }
 
-    // shortens a bitcoin address to abc...xyz form.
+    /**
+     * shortens a bitcoin address to abc...xyz form.
+     */
     protected function shorten_addr( $address ) {
         return strlen( $address ) > 8 ? substr( $address, 0, 3 ) . '..' . substr( $address, -3 ) : $address;
     }
 
-    // generates the tx (transaction) report. 
+    /**
+     * generates the tx (transaction) report.
+     */
     protected function gen_report_tx( $results, $format ) {
         
         $params = $this->get_params();
@@ -702,6 +740,8 @@ END;
         
         $fifo_lot_id = 0;
         $lifo_lot_id = 0;
+
+        $col_totals = array();
 
         $nr = [];
         $metalist = [];
@@ -818,22 +858,22 @@ END;
             $realized_gain = eval("return \$realized_gain_{$cm};");
             $realized_gain_long = eval("return \$realized_gain_{$cm}_long;" );
             $realized_gain_short = eval("return \$realized_gain_{$cm}_short;" );
-
+            
             foreach( $params['cols'] as $col ) {
-                $cn = $map[$col];   // column name
+                $cn = $map[$col]['title'];   // column name
                 switch( $col ) {
                     case 'date': $row[$cn] = date('Y-m-d', $r['block_time'] ); break;
                     case 'time': $row[$cn] = date('H:i:s', $r['block_time'] ); break;
                     case 'addrshort': $row[$cn] = $this->shorten_addr( $r['addr'] ); break;
                     case 'address': $row[$cn] = $r['addr']; break;
-                    case 'btcin': $row[$cn] = btcutil::btc_display( $r['amount_in'] ); break;
-                    case 'btcout': $row[$cn] = btcutil::btc_display( $r['amount_out'] ); break;
+                    case 'btcin': $row[$cn] = btcutil::btc_display( $r['amount_in'], true ); break;
+                    case 'btcout': $row[$cn] = btcutil::btc_display( $r['amount_out'], true ); break;
                     case 'btcbalance': $row[$cn] = btcutil::btc_display( $btc_balance ); break;
-                    case 'fiatin': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_in'] ); break;
-                    case 'fiatout': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_out'] ); break;
+                    case 'fiatin': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_in'], true ); break;
+                    case 'fiatout': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_out'], true ); break;
                     case 'fiatbalance': $row[$cn] = btcutil::fiat_display( $fiat_balance ); break;
-                    case 'fiatinnow': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_in_now'] ); break;
-                    case 'fiatoutnow': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_out_now'] ); break;
+                    case 'fiatinnow': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_in_now'], true ); break;
+                    case 'fiatoutnow': $row[$cn] = btcutil::fiat_display( $r['fiat_amount_out_now'], true ); break;
                     case 'fiatbalancenow': $row[$cn] = btcutil::fiat_display( $fiat_balance_now ); break;
                     case 'price': $row[$cn] = btcutil::fiat_display( $r['exchange_rate'] ); break;
                     case 'pricenow': $row[$cn] = btcutil::fiat_display( $r['exchange_rate_now'] ); break;
@@ -843,7 +883,7 @@ END;
                     case 'fiatamountnow': $row[$cn] = btcutil::fiat_display( $fiat_amount_now ); break;
 
                     case 'fiatgain': $row[$cn] = btcutil::fiat_display( $fiat_gain ); break;
-                    case 'fiatgaintotal': $row[$cn] = btcutil::fiat_display( $fiat_gain_balance ); break;
+                    case 'fiatgainbalance': $row[$cn] = btcutil::fiat_display( $fiat_gain_balance ); break;
 
                     case 'realizedgain': $row[$cn] = btcutil::fiat_display( $realized_gain, true ); break;
                     case 'realizedgainlong': $row[$cn] = btcutil::fiat_display( $realized_gain_long, true ); break;
@@ -860,15 +900,40 @@ END;
                     case 'txshort': $row[$cn] = $this->shorten_addr( $r['txid'] ); break;
                     case 'tx': $row[$cn] = $r['txid']; break;
                 }
+                if( $map[$col]['total'] ) {
+                    $total = @$col_totals[$col] ?: 0;
+                    $col_totals[$col] = $total + $row[$cn];
+                }
             }
             $nr[] = $row;
             $metalist[] = $meta;
         }
+        
+        // Add Totals Row
+        $found_empty = false;
+        $row = [];
+        foreach( $params['cols'] as $col ) {
+            $cn = $map[$col]['title'];   // column name
+            if( !$found_empty && !$map[$col]['total'] ) {
+                $row[$cn] = 'Totals:';
+                $found_empty = true;
+            }
+            else if( isset( $col_totals[$col] ) ) {
+                $row[$cn] = strstr( $col, 'btc' ) ? btcutil::btc_display( btcutil::btc_to_int( $col_totals[$col] ) ) :
+                                                    btcutil::fiat_display( btcutil::fiat_to_int( $col_totals[$col] ) );
+            }
+            else {
+                $row[$cn] = null;
+            }
+        }
+        $nr[] = $row;
 
         return array( $nr, $metalist );
     }
-    
-    // calculate realized gains using fifo or lifo method.
+
+    /**
+     * calculate realized gains using fifo or lifo method.
+     */
     protected function calc_fifo_stack( $r, &$fifo_stack, $is_fifo, $callback ) {
         $params = $this->get_params();
 
@@ -920,7 +985,9 @@ END;
         }
     }
 
-    // generates a report in schedule D form Form 8949 format.
+    /**
+     * generates a report in schedule D form Form 8949 format.
+     */
     protected function gen_report_schedule_d( $results, $format ) {
         
         $params = $this->get_params();
@@ -999,7 +1066,9 @@ END;
         return $nr;
     }
 
-    
+    /**
+     * generates a report in libratax matrix format.
+     */
     protected function gen_report_matrix( $results, $format ) {
         
         $params = $this->get_params();
@@ -1044,61 +1113,62 @@ END;
                 } );
             }
         }
-        
         return $nr;
     }
     
     
 
-    // returns all available columns for standard report.
+    /**
+     * returns all available columns for standard report.
+     */
     protected function all_columns() {
         $params = $this->get_params();
         $curr = $params['currency'];
         return array( 
-            'date' => 'Date',
-            'time' => 'Time',
-            'addrshort' => 'Addr Short',
-            'address' => 'Address',
-            'addressweb' => 'AddressWeb',
-            'btcin' => 'BTC In',
-            'btcout' => 'BTC Out',
-            'btcbalance' => 'BTC Balance',
-            'fiatin' => $curr . ' In',
-            'fiatout' => $curr . ' Out',
-            'fiatbalance' => $curr . ' Balance',
-            'fiatinnow' => $curr . ' In',
-            'fiatoutnow' => $curr . ' Out',
-            'fiatbalancenow' => $curr . ' Balance',
-            'price' => $curr . ' Price',
-            'pricenow' => $curr . ' Price Now',
+            'date'                   => array( 'title' => 'Date',                         'total' => false ),
+            'time'                   => array( 'title' => 'Time',                         'total' => false ),
+            'addrshort'              => array( 'title' => 'Addr Short',                   'total' => false ),
+            'address'                => array( 'title' => 'Address',                      'total' => false ),
+            'btcin'                  => array( 'title' => 'BTC In',                       'total' => true ),
+            'btcout'                 => array( 'title' => 'BTC Out',                      'total' => true ),
+            'btcbalance'             => array( 'title' => 'BTC Balance',                  'total' => false ),
+            'fiatin'                 => array( 'title' => $curr . ' In',                  'total' => true ),
+            'fiatout'                => array( 'title' => $curr . ' Out',                 'total' => true ),
+            'fiatbalance'            => array( 'title' => $curr . ' Balance',             'total' => false ),
+            'fiatinnow'              => array( 'title' => $curr . ' In',                  'total' => true ),
+            'fiatoutnow'             => array( 'title' => $curr . ' Out',                 'total' => true ),   
+            'fiatbalancenow'         => array( 'title' => $curr . ' Balance Now',         'total' => false ),  
+            'price'                  => array( 'title' => $curr . ' Price',               'total' => false ),   
+            'pricenow'               => array( 'title' => $curr . ' Price Now',           'total' => false ),
                 
-            'btcamount' => 'BTC Amount',
-            'fiatamount' => $curr . ' Amount',
-            'fiatamountnow' => $curr . ' Amount Now',
+            'btcamount'              => array( 'title' => 'BTC Amount',                   'total' => true ),  
+            'fiatamount'             => array( 'title' => $curr . ' Amount',              'total' => true ),
+            'fiatamountnow'          => array( 'title' => $curr . ' Amount Now',          'total' => true ),  
 
-            'fiatgain' => $curr . ' Gain',
-            'fiatgaintotal' => $curr . ' Total Gain',
+            'fiatgain'               => array( 'title' => $curr . ' Gain',                'total' => true ),
+            'fiatgainbalance'        => array( 'title' => $curr . ' Gain Balance',        'total' => false ),
 
-            'realizedgain' => 'Realized Gain',
-            'realizedgainlong' => 'Realized Gain (Long)',
-            'realizedgainshort' => 'Realized Gain (Short)',
+            'realizedgain'           => array( 'title' => 'Realized Gain',                'total' => true ),
+            'realizedgainlong'       => array( 'title' => 'Realized Gain (Long)',         'total' => true ),
+            'realizedgainshort'      => array( 'title' => 'Realized Gain (Short)',        'total' => true ),
             
-            'realizedgainfifo' => 'Realized Gain (FIFO)',
-            'realizedgainfifolong' => 'Realized Gain (FIFO, Long)',
-            'realizedgainfifoshort' => 'Realized Gain (FIFO, Short)',
+            'realizedgainfifo'       => array( 'title' => 'Realized Gain (FIFO)',         'total' => true ),  
+            'realizedgainfifolong'   => array( 'title' => 'Realized Gain (FIFO, Long)',   'total' => true ),
+            'realizedgainfifoshort'  => array( 'title' => 'Realized Gain (FIFO, Short)',  'total' => true ),
             
-            'realizedgainlifo' => 'Realized Gain (LIFO)',
-            'realizedgainlifolong' => 'Realized Gain (LIFO, Long)',
-            'realizedgainlifoshort' => 'Realized Gain (LIFO, Short)',
+            'realizedgainlifo'       => array( 'title' => 'Realized Gain (LIFO)',         'total' => true ),  
+            'realizedgainlifolong'   => array( 'title' => 'Realized Gain (LIFO, Long)',   'total' => true ),
+            'realizedgainlifoshort'  => array( 'title' => 'Realized Gain (LIFO, Short)',  'total' => true ),
                 
-            'txshort' => 'Tx Short',
-            'tx' => 'Tx',
-            'txweb' => 'TxWeb',
+            'txshort'                => array( 'title' => 'Tx Short',                     'total' => false ),
+            'tx'                     => array( 'title' => 'Tx',                           'total' => false ),  
         );
     }
 
-    // prints out single report in one of several possible formats,
-    // or multiple reports, one for each possible format.
+    /**
+     * prints out single report in one of several possible formats,
+     * or multiple reports, one for each possible format.
+     */
     protected function print_results( $results, $meta, $format ) {
         $params = $this->get_params();
         $outfile = @$params['outfile'];
@@ -1113,16 +1183,23 @@ END;
                                     pathinfo($outfile, PATHINFO_FILENAME),
                                     $format );
                 
-                $this->print_results_worker( $results, $meta, $outfile, $format );
+                report_writer::write_results( $results, $meta, $outfile, $format );
             }
         }
         else {
-            $this->print_results_worker( $results, $meta, $outfile, $format );
+            report_writer::write_results( $results, $meta, $outfile, $format );
         }
     }
+    
+}
 
-    // prints out single report in specified format, either to stdout or file.
-    protected function print_results_worker( $results, $meta, $outfile, $format ) {
+
+class report_writer {
+
+    /**
+     * prints out single report in specified format, either to stdout or file.
+     */
+    static public function write_results( $results, $meta, $outfile, $format ) {
 
         $fname = $outfile ?: 'php://stdout';
         $fh = fopen( $fname, 'w' );
@@ -1142,17 +1219,23 @@ END;
         }
     }
 
-    // writes out results in json (raw) format
+    /**
+     * writes out results in json (raw) format
+     */
     static public function write_results_json( $fh, $results ) {
         fwrite( $fh, json_encode( $results ) );
     }
 
-    // writes out results in jsonpretty format
+    /**
+     * writes out results in jsonpretty format
+     */
     static public function write_results_jsonpretty( $fh, $results ) {
         fwrite( $fh, json_encode( $results,  JSON_PRETTY_PRINT ) );
     }
     
-    // writes out results in csv format
+    /**
+     * writes out results in csv format
+     */
     static public function write_results_csv( $fh, $results ) {
         if( @$results[0] ) {
             fputcsv( $fh, array_keys( $results[0] ) );
@@ -1162,31 +1245,33 @@ END;
             fputcsv( $fh, $row );
         }
     }
-
-    // writes out results in html format
+    
+    /**
+     * writes out results in html format
+     */
     static public function write_results_html( $fh, $results, $meta ) {
         for( $i = 0; $i < count($results); $i ++ ) {
             $row =& $results[$i];
             $addr = @$meta[$i]['addr'];
             $tx = @$meta[$i]['tx'];
-
+            
             if( $addr && $tx ) {
-                $addr_url = sprintf( 'http://blockchain.info/address/%s', $addr );
-                $tx_url = sprintf( 'http://blockchain.info/tx/%s', $tx );
+                $addr_url = self::is_addr($addr) ? sprintf( 'http://blockchain.info/address/%s', $addr ) : null;
+                $tx_url = self::is_txid($tx) ? sprintf( 'http://blockchain.info/tx/%s', $tx ) : null;
         
-                if( isset( $row['Date'] ) ) {
+                if( isset( $row['Date'] ) && $tx_url ) {
                     $row['Date'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Date'] );
                 }
-                if( isset( $row['Addr Short'] ) ) {
+                if( isset( $row['Addr Short'] ) && $addr_url ) {
                     $row['Addr Short'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Addr Short'] );
                 }
-                if( isset( $row['Address'] ) ) {
+                if( isset( $row['Address'] ) && $addr_url ) {
                     $row['Address'] = sprintf( '<a href="%s">%s</a>', $addr_url, $row['Address'] );
                 }
-                if( isset( $row['Tx Short'] ) ) {
+                if( isset( $row['Tx Short'] ) && $tx_url ) {
                     $row['Tx Short'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx Short'] );
                 }
-                if( isset( $row['Tx'] ) ) {
+                if( isset( $row['Tx'] ) && $tx_url ) {
                     $row['Tx'] = sprintf( '<a href="%s">%s</a>', $tx_url, $row['Tx'] );
                 }
             }
@@ -1210,7 +1295,23 @@ END;
         fwrite( $fh, $html );
     }
 
-    // writes out results as a plain text table.  similar to mysql console results. 
+    /**
+     * checks if string appears to be a bitcoin address.
+     */
+    static private function is_addr( $addr ) {
+        return strlen($addr) >= 26 && strlen($addr) <= 35; 
+    }
+
+    /**
+     * checks if string appears to be a txid.
+     */
+    static private function is_txid( $tx ) {
+        return strlen($tx) == 64; 
+    }
+    
+    /**
+     * writes out results as a plain text table.  similar to mysql console results.
+     */
     static public function write_results_fixed_width( $fh, $results ) {
         
         if( !count( $results ) ) {
@@ -1297,7 +1398,10 @@ class btcutil {
     }
 
     // formats btc integer amount for display as decimal amount (rounded)   
-    static public function btc_display( $val ) {
+    static public function btc_display( $val, $omit_zero = false ) {
+        if( !$val && $omit_zero ) {
+            return null;
+        }
         return number_format( round($val / SATOSHI,8), 8, '.', '');
     }
 
@@ -1307,6 +1411,11 @@ class btcutil {
             return null;
         }
         return number_format( round($val / 100,3), 2, '.', '');
+    }
+    
+    // converts fiat decimal amount to integer amount.
+    static public function fiat_to_int( $val ) {
+        return ((int)(($val * 100)*10))/10;
     }
 
     // converts btc integer amount to decimal amount with full precision.
