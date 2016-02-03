@@ -986,7 +986,7 @@ END;
     }
 
     /**
-     * generates a report in schedule D form Form 8949 format.
+     * generates a report in schedule D Form 8949 format.
      */
     protected function gen_report_schedule_d( $results, $format ) {
         
