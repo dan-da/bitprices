@@ -758,6 +758,7 @@ END;
         $lifo_lot_id = 0;
 
         $col_totals = array();
+        $map = $this->all_columns();        
 
         $nr = [];
         $metalist = [];
@@ -862,8 +863,6 @@ END;
 
             $meta['addr'] = $r['addr'];
             $meta['tx'] = $r['txid'];
-            
-            $map = $this->all_columns();
             
             $methods = array('fifo', 'lifo');
             if( !in_array( $params['cost-method'], $methods ) ) {
