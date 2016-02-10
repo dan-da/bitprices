@@ -519,13 +519,27 @@ END;
         $params = $this->get_params();
         $currency = $params['currency'];
 
+        // important:  for LIFO, the movements must be sorted by timestamp
+        //             and purchase type.  (buy/sell).  If a SELL were to
+        //             precede a BUY for the same timestamp, then the BUY would
+        //             be processed by LIFO as if it occurred AFTER the sell.
         usort( $trans, function($a, $b) {
-            $a = $a['block_time'];
-            $b = $b['block_time'];
-            if( $a == $b ) {
-                return 0;
+            // order by block_time asc
+            if( $a['block_time'] < $b['block_time'] ) {
+                return -1;
             }
-            return ($a < $b) ? -1 : 1;
+            else if( $a['block_time'] > $b['block_time'] ) {
+                return 1;
+            }
+        
+            // order by buy, then sell.
+            if( $a['amount'] > 0 && $b['amount'] < 0 ) {
+                return -1;
+            }
+            else if( $a['amount'] < 0 && $b['amount'] > 0 ) {
+                return 1;
+            }
+            return 0;
         });
         
         // We collapse the list of vin/vout to the level of
