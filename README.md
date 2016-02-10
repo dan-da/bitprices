@@ -1,17 +1,65 @@
-# bitprices
+# bitprices : a bitcoin wallet auditing tool.
 
 A command-line tool that generates transaction reports with the USD (fiat)
-value on the date of each transaction.
+value on the date of each transaction.  As well as FIFO/LIFO disposal reports.
 
-Hopefully one day soon all wallet software will include reporting that includes
-the exchange rate at the time of each transaction.   Until that time, this
-tool may fill a gap.  Also, it can be used for addresses outside of your own
-wallet.
+Let's see a couple examples, shall we?
 
-This tool is useful for determining USD values for all transactions associated
-with one or more bitcoin addresses for an arbitrary range of dates. Such
-information can be useful when determining cost basis for tax reporting or other
-purposes.
+# Example Price History Report
+
+./bitprices.php --addresses=1M8s2S5bgAzSSzVTeL7zruvMPLvzSkEAuv -g
+```
++------------+------------+------------------+-----------+-------------+----------------+---------------+
+| Date       | Addr Short | BTC Amount       | USD Price | USD Amount  | USD Amount Now | USD Gain      |
++------------+------------+------------------+-----------+-------------+----------------+---------------+
+| 2011-11-16 | 1M8..Auv   |  500000.00000000 |      2.46 |  1230000.00 |   188355000.00 |  187125000.00 |
+| 2011-11-16 | 1M8..Auv   | -500000.00000000 |      2.46 | -1230000.00 |  -188355000.00 | -187125000.00 |
+| 2013-11-26 | 1M8..Auv   |       0.00011000 |    913.95 |        0.10 |           0.04 |         -0.06 |
+| 2013-11-26 | 1M8..Auv   |      -0.00011000 |    913.95 |       -0.10 |          -0.04 |          0.06 |
+| 2014-11-21 | 1M8..Auv   |       0.00010000 |    351.95 |        0.04 |           0.04 |          0.00 |
+| 2014-12-09 | 1M8..Auv   |       0.00889387 |    353.67 |        3.15 |           3.35 |          0.20 |
+| 2015-06-05 | 1M8..Auv   |       0.44520000 |    226.01 |      100.62 |         167.71 |         67.09 |
+| 2015-06-07 | 1M8..Auv   |       0.44917576 |    226.02 |      101.52 |         169.21 |         67.69 |
+| 2015-10-17 | 1M8..Auv   |       0.00010000 |    270.17 |        0.03 |           0.04 |          0.01 |
+| 2015-11-05 | 1M8..Auv   |       0.00010000 |    400.78 |        0.04 |           0.04 |          0.00 |
+| Totals:    |            |       0.90356963 |           |      205.40 |         340.39 |        134.99 |
++------------+------------+------------------+-----------+-------------+----------------+---------------+
+```
+
+note: This address was chosen for the example because it is a well known address
+listed on theopenledger.com as having the largest transaction ever. Also, the
+number of transactions is small, making it a good size for an example.
+
+http://www.theopenledger.com/9-most-famous-bitcoin-addresses/
+
+# Example Disposal Report
+
+This is a disposal report for the same address as above. Default columns and
+cost method (FIFO) are used.
+
+./bitprices.php --addresses=1M8s2S5bgAzSSzVTeL7zruvMPLvzSkEAuv --report-type=schedule_d -g
+
+```
++--------------------------+---------------+--------------------+------------+------------+-----------+-----------------+
+| Description              | Date Acquired | Date Sold/Disposed | Proceeds   | Cost Basis | Gain/Loss | Short/Long-term |
++--------------------------+---------------+--------------------+------------+------------+-----------+-----------------+
+| 500000.00000000 Bitcoins | 2011-11-16    | 2011-11-16         | 1230000.00 | 1230000.00 |      0.00 | Short           |
+| 0.00011000 Bitcoins      | 2013-11-26    | 2013-11-26         |       0.10 |       0.10 |      0.00 | Short           |
+|                          |               | Net Summary Long:  |       0.00 |       0.00 |      0.00 |                 |
+|                          |               | Net Summary Short: | 1230000.10 | 1230000.10 |      0.00 |                 |
++--------------------------+---------------+--------------------+------------+------------+-----------+-----------------+
+```
+
+# About bitprices
+
+This tool reports price history for all transactions associated with one or more
+bitcoin addresses for an arbitrary range of dates.
+
+Such information can be useful for understanding present day gain/loss or when
+determining cost basis for tax reporting or other purposes.
+
+The tool is also useful for auditing because it can be used by a third party
+without direct access to your wallet.
 
 As of version 1.0.0, the tool can also generate a sales/disposal report with
 realized gains, in schedule D format.
@@ -42,6 +90,20 @@ The schedule D report is provided for informational purposes only and may not
 be accurate or applicable to your situation.  You should NOT present these
 results to tax authorities.  Instead, consult with a tax professional.
 
+
+# Limitations
+
+* This tool assumes that all incoming BTC are purchases and all outgoing are
+  sales. This may or may not fit your accounting needs.
+* This tool does not presently exclude intra-wallet transfers. So movements to
+  change addresses appear in the reports which is not always desirable.
+  
+These limitations may be lifted in the future.  Please let the author
+know if either of these are important to you.
+
+note: [libratax](http://libratax.com) is a service that allows
+manual control of payment type for each transfer if you need that feature.
+
 # Pricing Granularity
 
 Exchange rates are based on the average *Daily* rate from bitcoinaverage.com.
@@ -50,34 +112,6 @@ Therefore, the exact price at the moment of the transaction is not reflected.
 For transactions that occurred "Today", the latest 24 hour average value from
 bitcoinaverage.com is used.
 
-# Example Report
-
-This report was obtained with the following command, using default columns:
-
-./bitprices.php --addresses=1M8s2S5bgAzSSzVTeL7zruvMPLvzSkEAuv --outfile=/tmp/report.txt -g
-```
-+------------+------------+------------------+-----------+-------------+----------------+---------------+
-| Date       | Addr Short | BTC Amount       | USD Price | USD Amount  | USD Amount Now | USD Gain      |
-+------------+------------+------------------+-----------+-------------+----------------+---------------+
-| 2011-11-16 | 1M8..Auv   |  500000.00000000 |      2.46 |  1230000.00 |   188355000.00 |  187125000.00 |
-| 2011-11-16 | 1M8..Auv   | -500000.00000000 |      2.46 | -1230000.00 |  -188355000.00 | -187125000.00 |
-| 2013-11-26 | 1M8..Auv   |       0.00011000 |    913.95 |        0.10 |           0.04 |         -0.06 |
-| 2013-11-26 | 1M8..Auv   |      -0.00011000 |    913.95 |       -0.10 |          -0.04 |          0.06 |
-| 2014-11-21 | 1M8..Auv   |       0.00010000 |    351.95 |        0.04 |           0.04 |          0.00 |
-| 2014-12-09 | 1M8..Auv   |       0.00889387 |    353.67 |        3.15 |           3.35 |          0.20 |
-| 2015-06-05 | 1M8..Auv   |       0.44520000 |    226.01 |      100.62 |         167.71 |         67.09 |
-| 2015-06-07 | 1M8..Auv   |       0.44917576 |    226.02 |      101.52 |         169.21 |         67.69 |
-| 2015-10-17 | 1M8..Auv   |       0.00010000 |    270.17 |        0.03 |           0.04 |          0.01 |
-| 2015-11-05 | 1M8..Auv   |       0.00010000 |    400.78 |        0.04 |           0.04 |          0.00 |
-| Totals:    |            |       0.90356963 |           |      205.40 |         340.39 |        134.99 |
-+------------+------------+------------------+-----------+-------------+----------------+---------------+
-```
-
-note: This address was chosen for the example because it is a well known address
-listed on theopenledger.com as having the largest transaction ever. Also, the
-number of transactions is small, making it a good size for an example.
-
-http://www.theopenledger.com/9-most-famous-bitcoin-addresses/
 
 # A note about Fiat Columns
 
@@ -166,6 +200,17 @@ transactions only, or both types.
     --oracle-raw=<p>    path to save raw server response, optional.
     --oracle-json=<p>   path to save formatted server response, optional.
     
+
+# Auditing by a Third Party
+
+bitprices facilitates third party auditing because it provides a complete
+transaction history without requiring any private keys.
+
+If the auditor is using bitprices, they will need all the wallet addresses.
+
+For modern HD wallets, the auditor would simply ask for the wallet master XPub
+key. The auditor would then use a tool such as [hd-wallet-addrs](https://github.com/dan-da/hd-wallet-addrs)
+to obtain the complete address list.
 
 
 # Exporting addresses from wallets.
@@ -302,9 +347,28 @@ See:
 * https://github.com/btcsuite/btcd/pull/516
 
 
+# LibraTax import mode
+
+bitprices now supports reading in transactions from a LibraTax transaction
+report rather than querying the blockchain directly.
+
+In this mode, all data including price history is obtained from the LibraTax
+input file.  No network requests are made.
+
+This can be useful for two purposes:
+
+ 1. Verifying bitprices output against LibraTax, and vice-versa.
+ 2. Generating some reports that LibraTax does not presently offer.
+ 
+See the --txfile flag for usage.
+
+note: One limitation of this mode is that LibraTax reports do not include the
+address for all transfers, so the addr field will contain some invalid
+addresses.
+
+
 # Todos
 
-* LIFO cost-method support.  verify same results as libratax.
 * implement avg-cost cost-method
 * implement unrealized gain
 * interpret insight's multiaddr results correctly. In theory it should be faster.
@@ -314,3 +378,5 @@ See:
   input master public key and entire wallet can be scanned.~~ done. see hd-wallet-addrs
 * ~~optimize btcd further ( filter inputs/outputs )~~ done.
 * ~~hopefully get btcd changes accepted by btcd project maintainers.~~ done.
+* ~~LIFO cost-method support.  verify same results as libratax.~~ done.
+
