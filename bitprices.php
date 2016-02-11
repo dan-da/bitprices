@@ -100,7 +100,7 @@ class bitprices {
                                       'api:', 'insight:',
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
-                                      'summarize-tx:',
+                                      'include-transfer',
                                       'oracle-raw:', 'oracle-json:',
                                       'version',
                                       ) );        
@@ -131,7 +131,7 @@ class bitprices {
             $params['cost-method'] = 'fifo';
         }
 
-        $params['summarize-tx'] = @$params['summarize-tx'] == 'no' ? false : true;
+        $params['include-transfer'] = isset( $params['include-transfer'] );
 
         if( !@$params['insight'] ) {
             $params['insight'] = 'https://insight.bitpay.com';
@@ -294,6 +294,7 @@ class bitprices {
                           'amount_out' => $row['amt'] < 0 ? abs($row['amt']) : 0,
                           'txid' => $count,
                           'exchange_rate' => $row['spotval'],
+                          'type' => $row['taxtype'],
                         );        
         };
         
@@ -458,8 +459,8 @@ class bitprices {
     --api=<api>          toshi|btcd|insight.   default = toshi.
     
     --direction=<dir>    transactions in | out | both   default = both.
-    --summarize-tx=<b>   yes|no  default = yes
-                           Use one row per each tx, even when change address(es)
+    --include-transfer   include transfers between wallet addresses
+                           eg change amounts.
     
     --date-start=<date>  Look for transactions since date. default = all.
     --date-end=<date>    Look for transactions until date. default = now.
@@ -518,12 +519,81 @@ END;
         
         $params = $this->get_params();
         $currency = $params['currency'];
+        
+        $myaddrs = [];
+        foreach( $this->get_addresses() as $addr ) {
+            $myaddrs[$addr] = 1;
+        }
+
+        // make vin and vout maps keyed by txid + amount for fast lookups.
+        $vinlist = [];
+        $voutlist = [];
+        foreach( $trans as $tx ) {
+            if( $tx['amount_out'] ) {
+                $key = $tx['txid'];
+                $vinlist[$key] = 1;
+            }
+            else if( $tx['amount_in'] ) {
+                $key = $tx['txid'];
+                $voutlist[$key] = $tx;
+            }
+        }
+        
+        $results = array();
+        foreach( $trans as $tx ) {
+            
+            if( !@$tx['type'] ) {  // libratax data already has type set.
+
+                // determine transfer type.
+                $type = '';
+                if( $tx['amount_in'] ) {
+                    $key = $tx['txid'];
+                    $type = @$vinlist[$key] ? 'transfer' : 'purchase';
+                }
+                else if( $tx['amount_out'] ) {
+                    $key = $tx['txid'];
+                    $tx_vout = @$voutlist[$key];
+                    if( $tx_vout ) {
+                        
+                        $diff = $tx['amount_out'] - $tx_vout['amount_in'];
+                        if( $diff > 0 ) {
+                            $tx['amount_out'] = $diff;  // sale amount to 3rd party.
+                            $type = 'sale';
+                            
+                            // Remainder is the internal transfer amount.
+                            if( $params['include-transfer'] ) {
+                                $tx_new = $tx;
+                                $tx_new['amount_out'] = $tx_vout['amount_in'];
+                                $this->add_fields( $tx_new, 'transfer', $currency );
+                                $results[] = $tx_new;
+                            }
+                        }
+                        else if( $diff == 0 ) {
+                            $type = 'transfer';
+                        }
+                        else {
+                            throw new Exception("amount_in > amount_out.  please report this bug to author.");
+                        }
+                    }
+                    else {
+                        $type = 'sale';
+                    }
+                }
+            }
+
+            $this->add_fields( $tx, $type, $currency );
+            
+            // exclude transfers unless --include-transfers flag is present.
+            if( $tx['type'] != 'transfer' || $params['include-transfer'] ) {
+                $results[] = $tx;
+            }
+        }
 
         // important:  for LIFO, the movements must be sorted by timestamp
-        //             and purchase type.  (buy/sell).  If a SELL were to
+        //             and purchase type.  (buy then sell).  If a SELL were to
         //             precede a BUY for the same timestamp, then the BUY would
         //             be processed by LIFO as if it occurred AFTER the sell.
-        usort( $trans, function($a, $b) {
+        usort( $results, function($a, $b) {
             // order by block_time asc
             if( $a['block_time'] < $b['block_time'] ) {
                 return -1;
@@ -532,68 +602,38 @@ END;
                 return 1;
             }
         
-            // order by buy, then sell.
-            if( $a['amount'] > 0 && $b['amount'] < 0 ) {
-                return -1;
+            // order by buy, then sell, then transfer.
+            if( $a['type'] != $b['type'] ) {
+                $rc = strcmp( $a['type'], $b['type'] );
+                if( $rc != 0 ) {
+                    return $rc;
+                }
             }
-            else if( $a['amount'] < 0 && $b['amount'] > 0 ) {
-                return 1;
-            }
-            return 0;
+            
+            return strcmp( $a['txid'], $b['txid'] );
         });
-        
-        // We collapse the list of vin/vout to the level of
-        // individual transactions when summarize-tx param is present.
-        if( $params['summarize-tx'] ) {
-            $txarr = array();
-            foreach( $trans as $in_out ) {
-                $txid = $in_out['txid'];
-                
-                // note: addr field will be the first address seen.
-                
-                if( isset($txarr[$txid]) ) {
-                    $tx =& $txarr[$txid];
-                    $tx['amount_in'] += $in_out['amount_in'];
-                    $tx['amount_out'] += $in_out['amount_out'];
-                    $tx['amount'] = $tx['amount_in'] - $tx['amount_out'];
-                    
-                    // ensure that addr is the send address if tx amount is negative.
-                    if( $in_out['amount_out'] > 0 && $tx['amount'] < 0 ) {
-                        $tx['addr'] = $in_out['addr'];
-                    }
-                    // ensure that addr is a receive address if tx amount is positive.
-                    else if( $in_out['amount_in'] > 0 && $tx['amount'] > 0 ) {
-                        $tx['addr'] = $in_out['addr'];
-                    }
-                }
-                else {
-                    $txarr[$txid] = $in_out;
-                }
-            }
-            $trans = $txarr;
-        }
-        unset( $tx );
 
-        $results = array();
-        foreach( $trans as $tx ) {
-            
-            $er = @$tx['exchange_rate'] ?: $this->get_historic_price( $currency, $tx['block_time'] );
-            
-            $tx['exchange_rate'] = $er;
-            $tx['exchange_rate_now'] = $ern = $this->get_24_hour_avg_price_cached( $currency );
-            
-            $tx['fiat_amount_in'] = $er ? btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate'] ) : null;
-            $tx['fiat_amount_out'] = $er ? btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate'] ) : null;
-            
-            $tx['fiat_amount_in_now'] = $ern ? btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate_now'] ) : null;
-            $tx['fiat_amount_out_now'] = $ern ? btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate_now'] ) : null;
-            
-            $tx['fiat_currency'] = $currency;
-
-            $results[] = $tx;
-        }
         
         return $results;
+    }
+    
+    protected function add_fields( &$tx, $type, $currency ) {
+
+        $er = @$tx['exchange_rate'] ?: $this->get_historic_price( $currency, $tx['block_time'] );
+        
+        $tx['type'] = $type;
+        
+        $tx['exchange_rate'] = $er;
+        $tx['exchange_rate_now'] = $ern = $this->get_24_hour_avg_price_cached( $currency );
+        
+        $tx['fiat_amount_in'] = $er ? btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate'] ) : null;
+        $tx['fiat_amount_out'] = $er ? btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate'] ) : null;
+        
+        $tx['fiat_amount_in_now'] = $ern ? btcutil::btcint_to_fiatint( $tx['amount_in'] * $tx['exchange_rate_now'] ) : null;
+        $tx['fiat_amount_out_now'] = $ern ? btcutil::btcint_to_fiatint( $tx['amount_out'] * $tx['exchange_rate_now'] ) : null;
+        
+        $tx['fiat_currency'] = $currency;
+        
     }
     
     /**
@@ -794,7 +834,7 @@ END;
             $fiat_balance_now += $fiat_amount_now;
             $fiat_gain_balance += $fiat_gain;
             
-            if( $r['amount_in'] ) {
+            if( $r['type'] == 'purchase' ) {
                 // add to end of fifo stack
                 $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$fifo_lot_id );
                 $lifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$lifo_lot_id );
@@ -802,13 +842,13 @@ END;
 
             // calc realized gains if it is an output.
             // TODO: avoid if a transfer between our wallet addresses.
-            if( $r['amount_out'] ) {
-                
+            if( $r['type'] == 'sale' ) {
+
                 // calc fifo totals to date
                 $this->calc_fifo_stack( $r, $fifo_stack, $is_fifo = true,
                                        function( $data )
                                         use (&$realized_gain_fifo_short, &$realized_gain_fifo_long ) {
-                                            
+
                     $realized_gain_fifo_short  += $data['longterm'] ? 0 : $data['realized_gain'];
                     $realized_gain_fifo_long  += $data['longterm'] ? $data['realized_gain'] : 0;
                 } );
@@ -825,7 +865,7 @@ END;
             
             $realized_gain_fifo = $realized_gain_fifo_long + $realized_gain_fifo_short;
             $realized_gain_lifo = $realized_gain_lifo_long + $realized_gain_lifo_short;
-
+ 
             // calc alltime totals.
             if( $r['amount_in'] ) {
                 $total_fiat_in_alltime += $r['fiat_amount_in'];
@@ -887,7 +927,7 @@ END;
             $realized_gain = eval("return \$realized_gain_{$cm};");
             $realized_gain_long = eval("return \$realized_gain_{$cm}_long;" );
             $realized_gain_short = eval("return \$realized_gain_{$cm}_short;" );
-            
+
             foreach( $params['cols'] as $col ) {
                 $cn = $map[$col]['title'];   // column name
                 switch( $col ) {
@@ -926,6 +966,7 @@ END;
                     case 'realizedgainlifolong': $row[$cn] = btcutil::fiat_display( $realized_gain_lifo_long, true ); break;
                     case 'realizedgainlifoshort': $row[$cn] = btcutil::fiat_display( $realized_gain_lifo_short, true ); break;
 
+                    case 'type': $row[$cn] = $r['type']; break;
                     case 'txshort': $row[$cn] = $this->shorten_addr( $r['txid'] ); break;
                     case 'tx': $row[$cn] = $r['txid']; break;
                 }
@@ -1032,11 +1073,11 @@ END;
 
         foreach( $results as $r ) {
             
-            if( $r['amount_in'] ) {
+            if( $r['type'] == 'purchase' ) {
                 $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$fifo_lot_id );
             }
 
-            if( $r['amount_out'] ) {
+            if( $r['type'] == 'sale' ) {
                 
                 $is_fifo = $cost_method == 'fifo';
                 $this->calc_fifo_stack( $r, $fifo_stack, $is_fifo,
@@ -1113,11 +1154,11 @@ END;
         
         foreach( $results as $r ) {
             
-            if( $r['amount_in'] ) {
+            if( $r['type'] == 'purchase' ) {
                 $fifo_stack[] = array( 'qty' => $r['amount_in'], 'exchange_rate' => $r['exchange_rate'], 'block_time' => $r['block_time'], 'lot_id' => ++$fifo_lot_id );
             }
 
-            if( $r['amount_out'] ) {
+            if( $r['type'] == 'sale' ) {
                 
                 $is_fifo = $cost_method == 'fifo';
                 $this->calc_fifo_stack( $r, $fifo_stack, $is_fifo,
@@ -1189,6 +1230,7 @@ END;
             'realizedgainlifolong'   => array( 'title' => 'Realized Gain (LIFO, Long)',   'total' => true ),
             'realizedgainlifoshort'  => array( 'title' => 'Realized Gain (LIFO, Short)',  'total' => true ),
                 
+            'type'                   => array( 'title' => 'Type',                         'total' => false ),
             'txshort'                => array( 'title' => 'Tx Short',                     'total' => false ),
             'tx'                     => array( 'title' => 'Tx',                           'total' => false ),  
         );
