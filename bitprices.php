@@ -525,17 +525,21 @@ END;
         $params = $this->get_params();
         $currency = $params['currency'];
         
-        // make vin and vout maps keyed by txid + amount for fast lookups.
+        // make vin and vout maps keyed by txid for fast lookups.
+        // this will give us the sum of wallet-address inputs and
+        // sum of wallet-address outputs, per transaction.
         $vinlist = [];
         $voutlist = [];
         foreach( $trans as $tx ) {
             if( $tx['amount_out'] ) {
                 $key = $tx['txid'];
-                $vinlist[$key] = 1;
+                $sum = @$vinlist[$key] ?: 0;
+                $vinlist[$key] = $sum + $tx['amount_out'];
             }
             else if( $tx['amount_in'] ) {
                 $key = $tx['txid'];
-                $voutlist[$key] = $tx;
+                $sum = @$voutlist[$key] ?: 0;
+                $voutlist[$key] = $sum + $tx['amount_in'];
             }
         }
         
@@ -548,15 +552,43 @@ END;
                 $type = '';
                 if( $tx['amount_in'] ) {
                     $key = $tx['txid'];
-                    $transfer = $params['disable-transfer'] ? 'purchase' : 'transfer';
-                    $type = @$vinlist[$key] ? $transfer : 'purchase';
+                    $total_output = @$vinlist[$key];
+                    if( $total_output && !$params['disable-transfer']) {
+                        
+                        $diff = $tx['amount_in'] - $total_output;
+                        $vinlist[$key] -= $tx['amount_in'];
+                        $vinlist[$key] = $vinlist[$key] >= 0 ?: 0;
+
+                        if( $diff > 0 ) {
+                            $tx['amount_in'] = $diff;  // purchase amount from 3rd party.
+                            $type = 'purchase';
+
+                            // Remainder is the internal transfer amount.
+                            if( $params['include-transfer'] ) {
+                                $tx_new = $tx;
+                                $tx_new['amount_in'] = $total_output;
+                                $tx_new['type'] = 'transfer';
+                                $this->add_fields( $tx_new, $currency );
+                                $results[] = $tx_new;
+                            }
+                        }
+                        else {
+                            $type = 'transfer';
+                        }
+                    }
+                    else {
+                        $type = 'purchase';
+                    }
                 }
                 else if( $tx['amount_out'] ) {
                     $key = $tx['txid'];
-                    $tx_vout = @$voutlist[$key];
-                    if( $tx_vout && !$params['disable-transfer']) {
+                    $total_input = @$voutlist[$key];
+                    if( $total_input && !$params['disable-transfer']) {
                         
-                        $diff = $tx['amount_out'] - $tx_vout['amount_in'];
+                        $diff = $tx['amount_out'] - $total_input;
+                        $voutlist[$key] -= $tx['amount_out'];
+                        $voutlist[$key] = $voutlist[$key] >= 0 ?: 0;
+                        
                         if( $diff > 0 ) {
                             $tx['amount_out'] = $diff;  // sale amount to 3rd party.
                             $type = 'sale';
@@ -564,17 +596,14 @@ END;
                             // Remainder is the internal transfer amount.
                             if( $params['include-transfer'] ) {
                                 $tx_new = $tx;
-                                $tx_new['amount_out'] = $tx_vout['amount_in'];
+                                $tx_new['amount_out'] = $total_input;
                                 $tx_new['type'] = 'transfer';
                                 $this->add_fields( $tx_new, $currency );
                                 $results[] = $tx_new;
                             }
                         }
-                        else if( $diff == 0 ) {
-                            $type = 'transfer';
-                        }
                         else {
-                            throw new Exception("amount_in > amount_out.  please report this bug to author.");
+                            $type = 'transfer';
                         }
                     }
                     else {
