@@ -101,6 +101,7 @@ class bitprices {
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
                                       'include-transfer',
+                                      'disable-transfer',
                                       'oracle-raw:', 'oracle-json:',
                                       'version',
                                       ) );        
@@ -132,6 +133,7 @@ class bitprices {
         }
 
         $params['include-transfer'] = isset( $params['include-transfer'] );
+        $params['disable-transfer'] = isset( $params['disable-transfer'] );
 
         if( !@$params['insight'] ) {
             $params['insight'] = 'https://insight.bitpay.com';
@@ -459,8 +461,11 @@ class bitprices {
     --api=<api>          toshi|btcd|insight.   default = toshi.
     
     --direction=<dir>    transactions in | out | both   default = both.
+    
     --include-transfer   include transfers between wallet addresses
                            eg change amounts.
+    --disable-transfer   disables transfer detection.  same behavior
+                           as bitprices v1.0.3 and below.
     
     --date-start=<date>  Look for transactions since date. default = all.
     --date-end=<date>    Look for transactions until date. default = now.
@@ -543,12 +548,13 @@ END;
                 $type = '';
                 if( $tx['amount_in'] ) {
                     $key = $tx['txid'];
-                    $type = @$vinlist[$key] ? 'transfer' : 'purchase';
+                    $transfer = $params['disable-transfer'] ? 'purchase' : 'transfer';
+                    $type = @$vinlist[$key] ? $transfer : 'purchase';
                 }
                 else if( $tx['amount_out'] ) {
                     $key = $tx['txid'];
                     $tx_vout = @$voutlist[$key];
-                    if( $tx_vout ) {
+                    if( $tx_vout && !$params['disable-transfer']) {
                         
                         $diff = $tx['amount_out'] - $tx_vout['amount_in'];
                         if( $diff > 0 ) {
