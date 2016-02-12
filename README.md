@@ -9,21 +9,21 @@ Let's see a couple examples, shall we?
 
 ./bitprices.php --addresses=1M8s2S5bgAzSSzVTeL7zruvMPLvzSkEAuv -g
 ```
-+------------+------------+------------------+-----------+-------------+----------------+---------------+
-| Date       | Addr Short | BTC Amount       | USD Price | USD Amount  | USD Amount Now | USD Gain      |
-+------------+------------+------------------+-----------+-------------+----------------+---------------+
-| 2011-11-16 | 1M8..Auv   |  500000.00000000 |      2.46 |  1230000.00 |   188355000.00 |  187125000.00 |
-| 2011-11-16 | 1M8..Auv   | -500000.00000000 |      2.46 | -1230000.00 |  -188355000.00 | -187125000.00 |
-| 2013-11-26 | 1M8..Auv   |       0.00011000 |    913.95 |        0.10 |           0.04 |         -0.06 |
-| 2013-11-26 | 1M8..Auv   |      -0.00011000 |    913.95 |       -0.10 |          -0.04 |          0.06 |
-| 2014-11-21 | 1M8..Auv   |       0.00010000 |    351.95 |        0.04 |           0.04 |          0.00 |
-| 2014-12-09 | 1M8..Auv   |       0.00889387 |    353.67 |        3.15 |           3.35 |          0.20 |
-| 2015-06-05 | 1M8..Auv   |       0.44520000 |    226.01 |      100.62 |         167.71 |         67.09 |
-| 2015-06-07 | 1M8..Auv   |       0.44917576 |    226.02 |      101.52 |         169.21 |         67.69 |
-| 2015-10-17 | 1M8..Auv   |       0.00010000 |    270.17 |        0.03 |           0.04 |          0.01 |
-| 2015-11-05 | 1M8..Auv   |       0.00010000 |    400.78 |        0.04 |           0.04 |          0.00 |
-| Totals:    |            |       0.90356963 |           |      205.40 |         340.39 |        134.99 |
-+------------+------------+------------------+-----------+-------------+----------------+---------------+
++------------+------------+------------------+-----------+-------------+----------------+---------------+----------+
+| Date       | Addr Short | BTC Amount       | USD Price | USD Amount  | USD Amount Now | USD Gain      | Type     |
++------------+------------+------------------+-----------+-------------+----------------+---------------+----------+
+| 2011-11-16 | 1M8..Auv   |  500000.00000000 |      2.46 |  1230000.00 |   189905000.00 |  188675000.00 | purchase |
+| 2011-11-16 | 1M8..Auv   | -500000.00000000 |      2.46 | -1230000.00 |  -189905000.00 | -188675000.00 | sale     |
+| 2013-11-26 | 1M8..Auv   |       0.00011000 |    913.95 |        0.10 |           0.04 |         -0.06 | purchase |
+| 2013-11-26 | 1M8..Auv   |      -0.00011000 |    913.95 |       -0.10 |          -0.04 |          0.06 | sale     |
+| 2014-11-21 | 1M8..Auv   |       0.00010000 |    351.95 |        0.04 |           0.04 |          0.00 | purchase |
+| 2014-12-09 | 1M8..Auv   |       0.00889387 |    353.67 |        3.15 |           3.38 |          0.23 | purchase |
+| 2015-06-05 | 1M8..Auv   |       0.44520000 |    226.01 |      100.62 |         169.09 |         68.47 | purchase |
+| 2015-06-07 | 1M8..Auv   |       0.44917576 |    226.02 |      101.52 |         170.60 |         69.08 | purchase |
+| 2015-10-17 | 1M8..Auv   |       0.00010000 |    270.17 |        0.03 |           0.04 |          0.01 | purchase |
+| 2015-11-05 | 1M8..Auv   |       0.00010000 |    400.78 |        0.04 |           0.04 |          0.00 | purchase |
+| Totals:    |            |       0.90356963 |           |      205.40 |         343.19 |        137.79 |          |
++------------+------------+------------------+-----------+-------------+----------------+---------------+----------+
 ```
 
 note: This address was chosen for the example because it is a well known address
@@ -64,6 +64,9 @@ without direct access to your wallet.
 As of version 1.0.0, the tool can also generate a sales/disposal report with
 realized gains, in schedule D format.
 
+As of version 1.0.4, the tool identifies transfers between wallet addresses
+and excludes them from reports by default.
+
 If all addresses from a given wallet are provided (including change addresses)
 then the tool can provide a full and complete report of all wallet transactions.
 
@@ -95,8 +98,6 @@ results to tax authorities.  Instead, consult with a tax professional.
 
 * This tool assumes that all incoming BTC are purchases and all outgoing are
   sales. This may or may not fit your accounting needs.
-* This tool does not presently exclude intra-wallet transfers. So movements to
-  change addresses appear in the reports which is not always desirable.
   
 These limitations may be lifted in the future.  Please let the author
 know if either of these are important to you.
@@ -137,6 +138,7 @@ Additionally, the report may contain incoming transactions only, outgoing
 transactions only, or both types.
 
 # Usage
+
    bitprices.php
 
    This script generates a report of transactions with the USD value
@@ -155,8 +157,8 @@ transactions only, or both types.
     --api=<api>          toshi|btcd|insight.   default = toshi.
     
     --direction=<dir>    transactions in | out | both   default = both.
-    --summarize-tx=<b>   yes|no  default = yes
-                           Use one row per each tx, even when change address(es)
+    --include-transfer   include transfers between wallet addresses
+                           eg change amounts.
     
     --date-start=<date>  Look for transactions since date. default = all.
     --date-end=<date>    Look for transactions until date. default = now.
@@ -198,7 +200,7 @@ transactions only, or both types.
     --testnet           use testnet. only affects addr validation.
     
     --oracle-raw=<p>    path to save raw server response, optional.
-    --oracle-json=<p>   path to save formatted server response, optional.
+    --oracle-json=<p>   path to save formatted server response, optional.    
     
 
 # Auditing by a Third Party
@@ -211,6 +213,23 @@ If the auditor is using bitprices, they will need all the wallet addresses.
 For modern HD wallets, the auditor would simply ask for the wallet master XPub
 key. The auditor would then use a tool such as [hd-wallet-addrs](https://github.com/dan-da/hd-wallet-addrs)
 to obtain the complete address list.
+
+# Intra-wallet transfers and Change Addresses
+
+As of version 1.0.4, the tool identifies transfers between wallet addresses
+and excludes them from reports by default.  As such, movements to change
+addresses will not be included in reports or calculations.
+
+The --include-transfer flag can be used to include these transfers in reports.
+They will not be included in realized gain calculations (FIFO/LIFO) but will
+be included in column totals.
+
+The behavior in 1.0.4 has changed since 1.0.3.  In particular, bitprices now
+splits sales rows to indicate 3rd party payments vs wallet transfers.
+
+If desired, the 1.0.3 behavior can be obtained by using the --disable-transfer
+flag.  In this mode, wallet transfers will not be detected and sales rows will
+not be split.
 
 
 # Exporting addresses from wallets.
@@ -373,6 +392,7 @@ addresses.
 * implement unrealized gain
 * interpret insight's multiaddr results correctly. In theory it should be faster.
 * hopefully get toshi changes accepted by toshi project maintainers.
+* ~~identify and exclude intra-wallet transfers~~  done.  see --include-transfer
 * ~~Create website frontend for the tool.~~ done. see http://mybitprices.info
 * ~~Add Bip32, 39, 44 support ( HD Wallets ) so it is only necessary to
   input master public key and entire wallet can be scanned.~~ done. see hd-wallet-addrs
