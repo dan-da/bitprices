@@ -338,7 +338,7 @@ class bitprices {
     protected function get_col_templates() {
         $all_cols = implode( ',', array_keys( $this->all_columns() ) );
         $map = array(
-            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,price,fiatamount,fiatamountnow,fiatgain' ),
+            'standard' => array( 'desc' => "Standard report", 'cols' => 'date,addrshort,btcamount,price,fiatamount,fiatamountnow,fiatgain,type' ),
             'balance' => array( 'desc' => "Balance report", 'cols' => 'date,addrshort,btcin,btcout,realizedgain,btcbalance', 'notes' => 'Equivalent to LibraTax: Balance report.' ),
             'realizedgain' => array( 'desc' => "Realized Gain", 'cols' => 'date,btcamount,fiatamount,realizedgainshort,realizedgainlong' ),
             'realizedgainmethods' => array( 'desc' => "Realized Gain Method Comparison", 'cols' => 'date,btcamount,fiatamount,realizedgainfifo,realizedgainlifo' ),
@@ -520,11 +520,6 @@ END;
         $params = $this->get_params();
         $currency = $params['currency'];
         
-        $myaddrs = [];
-        foreach( $this->get_addresses() as $addr ) {
-            $myaddrs[$addr] = 1;
-        }
-
         // make vin and vout maps keyed by txid + amount for fast lookups.
         $vinlist = [];
         $voutlist = [];
@@ -564,7 +559,8 @@ END;
                             if( $params['include-transfer'] ) {
                                 $tx_new = $tx;
                                 $tx_new['amount_out'] = $tx_vout['amount_in'];
-                                $this->add_fields( $tx_new, 'transfer', $currency );
+                                $tx_new['type'] = 'transfer';
+                                $this->add_fields( $tx_new, $currency );
                                 $results[] = $tx_new;
                             }
                         }
@@ -579,9 +575,10 @@ END;
                         $type = 'sale';
                     }
                 }
+                $tx['type'] = $type;
             }
 
-            $this->add_fields( $tx, $type, $currency );
+            $this->add_fields( $tx, $currency );
             
             // exclude transfers unless --include-transfers flag is present.
             if( $tx['type'] != 'transfer' || $params['include-transfer'] ) {
@@ -617,11 +614,9 @@ END;
         return $results;
     }
     
-    protected function add_fields( &$tx, $type, $currency ) {
+    protected function add_fields( &$tx, $currency ) {
 
         $er = @$tx['exchange_rate'] ?: $this->get_historic_price( $currency, $tx['block_time'] );
-        
-        $tx['type'] = $type;
         
         $tx['exchange_rate'] = $er;
         $tx['exchange_rate_now'] = $ern = $this->get_24_hour_avg_price_cached( $currency );
