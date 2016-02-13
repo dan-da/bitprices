@@ -82,9 +82,17 @@ class blockchain_api_toshi implements blockchain_api {
 
         $tx_list_toshi = array_reverse( $tx_list_toshi );
         $tx_list_normal = array();
+
         foreach( $tx_list_toshi as $tx_toshi ) {
+
+            if( !@$tx_toshi['block_time'] ) {
+                // filter out unconfirmed transactions
+                continue;
+            }
+
+            $block_time = strtotime($tx_toshi['block_time']);
             
-            $in_period = $tx_toshi['block_time'] >= $start_time && $tx_toshi['block_time'] <= $end_time;
+            $in_period = $block_time >= $start_time && $block_time <= $end_time;
             if( !$in_period ) {
                 continue;
             }
@@ -222,6 +230,10 @@ class blockchain_api_btcd implements blockchain_api {
 
         $tx_list_normal = array();
         foreach( $tx_list_btcd as $tx_btcd ) {
+            if( !@$tx_btcd['blocktime'] ) {
+                // filter out unconfirmed transactions
+                continue;
+            }
             $in_period = $tx_btcd['blocktime'] >= $start_time && $tx_btcd['blocktime'] <= $end_time;
             if( !$in_period ) {
                 continue;
@@ -373,6 +385,11 @@ class blockchain_api_insight_multiaddr  {
         
         $tx_list_normal = array();
         foreach( $tx_list_insight as $tx_insight ) {
+
+            if( !@$tx_insight['blocktime'] ) {
+                // filter out unconfirmed transactions
+                continue;
+            }
             
             $in_period = $tx_insight['blocktime'] >= $start_time && $tx_insight['blocktime'] <= $end_time;
             if( !$in_period ) {
@@ -515,7 +532,7 @@ class blockchain_api_insight  {
         return $this->normalize_transactions( $tx_list, $addr, $start_time, $end_time );
     }
     
-    protected function normalize_transactions( $tx_list_insight, $addr ) {
+    protected function normalize_transactions( $tx_list_insight, $addr, $start_time, $end_time ) {
 
         // attempt to get insight tx ordered in same way as btcd, toshi.
         // doesn't work 100% though.   :(
@@ -523,7 +540,12 @@ class blockchain_api_insight  {
         $date_map = array();
         foreach( $tx_list_insight as $tx ) {
 
-            $time = $tx['blocktime'];
+            $time = @$tx['blocktime'];
+
+            if( !$time ) {
+                // filter out unconfirmed transactions
+                continue;
+            }
             
             $in_period = $time >= $start_time && $time <= $end_time;
             if( !$in_period ) {
