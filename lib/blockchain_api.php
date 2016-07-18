@@ -270,8 +270,9 @@ class blockchain_api_btcd implements blockchain_api {
                 }
             }
             
-            $idx = 0;            
-            foreach( $tx_btcd['vin'] as $input ) {
+            $idx = 0;
+            $vinlist = @$tx_btcd['vin'] ?: [];            
+            foreach( $vinlist as $input ) {
                 $idx ++;
                 
                 // note: at this time, prevOut requires patched btcd from
