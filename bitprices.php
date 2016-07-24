@@ -100,8 +100,6 @@ class bitprices {
                                       'api:', 'insight:',
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
-                                      'include-transfer',
-                                      'disable-transfer',
                                       'oracle-raw:', 'oracle-json:',
                                       'version',
                                       ) );        
@@ -131,9 +129,6 @@ class bitprices {
         if( !@$params['cost-method'] ) {
             $params['cost-method'] = 'fifo';
         }
-
-        $params['include-transfer'] = isset( $params['include-transfer'] );
-        $params['disable-transfer'] = isset( $params['disable-transfer'] );
 
         if( !@$params['insight'] ) {
             $params['insight'] = 'https://insight.bitpay.com';
@@ -462,11 +457,6 @@ class bitprices {
     
     --direction=<dir>    transactions in | out | both   default = both.
     
-    --include-transfer   include transfers between wallet addresses
-                           eg change amounts.
-    --disable-transfer   disables transfer detection.  same behavior
-                           as bitprices v1.0.3 and below.
-    
     --date-start=<date>  Look for transactions since date. default = all.
     --date-end=<date>    Look for transactions until date. default = now.
     
@@ -553,72 +543,18 @@ END;
                 if( $tx['amount_in'] ) {
                     $key = $tx['txid'];
                     $total_output = @$vinlist[$key];
-                    if( $total_output && !$params['disable-transfer']) {
-                        
-                        $diff = $tx['amount_in'] - $total_output;
-                        $vinlist[$key] -= $tx['amount_in'];
-                        $vinlist[$key] = $vinlist[$key] >= 0 ?: 0;
-
-                        if( $diff > 0 ) {
-                            $tx['amount_in'] = $diff;  // purchase amount from 3rd party.
-                            $type = 'purchase';
-
-                            // Remainder is the internal transfer amount.
-                            if( $params['include-transfer'] ) {
-                                $tx_new = $tx;
-                                $tx_new['amount_in'] = $total_output;
-                                $tx_new['type'] = 'transfer';
-                                $this->add_fields( $tx_new, $currency );
-                                $results[] = $tx_new;
-                            }
-                        }
-                        else {
-                            $type = 'transfer';
-                        }
-                    }
-                    else {
-                        $type = 'purchase';
-                    }
+                    $type = 'purchase';
                 }
                 else if( $tx['amount_out'] ) {
                     $key = $tx['txid'];
                     $total_input = @$voutlist[$key];
-                    if( $total_input && !$params['disable-transfer']) {
-                        
-                        $diff = $tx['amount_out'] - $total_input;
-                        $voutlist[$key] -= $tx['amount_out'];
-                        $voutlist[$key] = $voutlist[$key] >= 0 ?: 0;
-                        
-                        if( $diff > 0 ) {
-                            $tx['amount_out'] = $diff;  // sale amount to 3rd party.
-                            $type = 'sale';
-                            
-                            // Remainder is the internal transfer amount.
-                            if( $params['include-transfer'] ) {
-                                $tx_new = $tx;
-                                $tx_new['amount_out'] = $total_input;
-                                $tx_new['type'] = 'transfer';
-                                $this->add_fields( $tx_new, $currency );
-                                $results[] = $tx_new;
-                            }
-                        }
-                        else {
-                            $type = 'transfer';
-                        }
-                    }
-                    else {
-                        $type = 'sale';
-                    }
+                    $type = 'sale';
                 }
                 $tx['type'] = $type;
             }
 
             $this->add_fields( $tx, $currency );
-            
-            // exclude transfers unless --include-transfers flag is present.
-            if( $tx['type'] != 'transfer' || $params['include-transfer'] ) {
-                $results[] = $tx;
-            }
+            $results[] = $tx;
         }
 
         // important:  for LIFO, the movements must be sorted by timestamp
