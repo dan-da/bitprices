@@ -189,7 +189,8 @@ transactions only, or both types.
     --btcd-rpc-user=<u> btcd rpc username.
     --btcd-rpc-pass=<p> btcd rpc password.
     
-    --insight=<url>     insight server. defaults to https://insight.bitpay.com
+    --insight=<url>     insight server. defaults to https://insight.bitpay.com/api
+                        use http://localhost:3001/insight-api for local node
     
     --addr-tx-limit=<n> per address transaction limit. default = 1000
     --testnet           use testnet. only affects addr validation.
