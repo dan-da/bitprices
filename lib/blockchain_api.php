@@ -193,9 +193,13 @@ class blockchain_api_btcd implements blockchain_api {
 
         $btcd = sprintf( '%s:%s', $params['btcd-rpc-host'], $params['btcd-rpc-port'] );
         mylogger()->log( "Retrieving transactions from btcd $btcd", mylogger::info );
+
+        $parts = parse_url($btcd);
+        $scheme = @$parts['scheme'] ?: 'http';
+	$host = @$parts['host'];
         
-        $url = sprintf( 'http://%s:%s@%s:%s/', $params['btcd-rpc-user'], $params['btcd-rpc-pass'],
-                                          $params['btcd-rpc-host'], $params['btcd-rpc-port']);
+        $url = sprintf( '%s://%s:%s@%s:%s/', $scheme, $params['btcd-rpc-user'], $params['btcd-rpc-pass'],
+                                          $host, $params['btcd-rpc-port']);
         $rpc = new BitcoinClient( $url, false, 'BTC' );
         
         $tx_limit = (int)$params['addr-tx-limit'];
