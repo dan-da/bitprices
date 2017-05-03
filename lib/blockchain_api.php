@@ -340,7 +340,7 @@ class blockchain_api_insight_multiaddr  {
         $addr_tx_limit = $params['addr-tx-limit'];
         $addrs = implode( ',', $addr_list );
         
-        $url_mask = "%s/api/addrs/%s/txs?from=0&to=%s";
+        $url_mask = "%s/addrs/%s/txs?from=0&to=%s";
         $url = sprintf( $url_mask, $params['insight'], $addrs, $addr_tx_limit );
         
         mylogger()->log( "Retrieving transactions from $url", mylogger::info );
@@ -500,7 +500,7 @@ class blockchain_api_insight  {
         // note:  insight /api/txs does not presently seem to support a limit.
         $addr_tx_limit = $params['addr-tx-limit'];
         
-        $url_mask = "%s/api/txs?address=%s";
+        $url_mask = "%s/txs?address=%s";
         $url = sprintf( $url_mask, $params['insight'], $addr );
         
         mylogger()->log( "Retrieving transactions from $url", mylogger::info );
