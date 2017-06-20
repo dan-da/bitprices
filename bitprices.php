@@ -627,12 +627,6 @@ END;
         
         $map = self::get_historic_prices( $currency );
         $price = @$map[$date];
-        
-        // if date is today, then get 24 hour average.
-        if( !$price && time() - $timestamp < 86400 ) {
-            return $this->get_24_hour_avg_price_cached( $currency );
-        }
-        
         return $price;
     }
 
@@ -677,14 +671,15 @@ END;
      * TODO: abstract for multiple providers.
      */
     protected function get_24_hour_avg_price( $currency ) {
-
-        $url_mask = 'https://api.bitcoinaverage.com/ticker/global/%s/';
-        $url = sprintf( $url_mask, strtoupper( $currency ) );
         
-        mylogger()->log( "Retrieving $currency 24 hour average price from bitcoinaverage.com", mylogger::info );
+        $market = 'BTC' . strtoupper($currency);
+        $url_mask = 'https://apiv2.bitcoinaverage.com/indices/global/ticker/%s';
+        $url = sprintf( $url_mask, $market );
+        mylogger()->log( "Retrieving $currency price history from apiv2.bitcoinaverage.com", mylogger::info );
         $buf = file_get_contents( $url );
         $data = json_decode( $buf, true );
-        return (int)($data['24h_avg'] * 100);
+        
+        return $data['averages']['day'] * 100;
     }
 
     /**
@@ -708,7 +703,9 @@ END;
             return null;
         }
         
-        $fname = dirname(__FILE__) . sprintf( '/price_history/per_day_all_time_history.%s.csv', $currency );
+        $market = 'BTC' . strtoupper($currency);
+        
+        $fname = dirname(__FILE__) . sprintf( '/price_history/per_day_all_time_history.%s.csv', $market );
         $exists = file_exists( $fname );
         if( $exists ) {
             $file_age = time() - filemtime( $fname );
@@ -718,9 +715,9 @@ END;
             $dir = dirname( $fname );
             file_exists($dir) || mkdir( $dir );
             
-            $url_mask = 'https://api.bitcoinaverage.com/history/%s/per_day_all_time_history.csv';
-            $url = sprintf( $url_mask, strtoupper( $currency ) );
-            mylogger()->log( "Retrieving $currency price history from bitcoinaverage.com", mylogger::info );
+            $url_mask = 'https://apiv2.bitcoinaverage.com/indices/global/history/%s?period=alltime&format=csv';
+            $url = sprintf( $url_mask, $market );
+            mylogger()->log( "Retrieving $currency price history from apiv2.bitcoinaverage.com", mylogger::info );
             $buf = file_get_contents( $url );
             file_put_contents( $fname, $buf );
             
