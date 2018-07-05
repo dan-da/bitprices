@@ -119,7 +119,7 @@ class bitprices {
         }
                
         if( !@$params['api'] ) {
-            $params['api'] = 'toshi';
+            $params['api'] = 'insight';
         }
 
         if( !@$params['report-type'] ) {
@@ -717,7 +717,7 @@ END;
             
             $url_mask = 'https://apiv2.bitcoinaverage.com/indices/global/history/%s?period=alltime&format=csv';
             $url = sprintf( $url_mask, $market );
-            mylogger()->log( "Retrieving $currency price history from apiv2.bitcoinaverage.com", mylogger::info );
+            mylogger()->log( "Retrieving $currency price history from $url", mylogger::info );
             $buf = file_get_contents( $url );
             file_put_contents( $fname, $buf );
             
@@ -729,6 +729,9 @@ END;
         $map = array();
         while( $row = fgetcsv( $fh ) ) {
             list( $date, $high, $low, $avg, $volume ) = $row;
+            if(!is_numeric($avg)) {
+                continue;
+            }
             $date = date('Y-m-d', strtotime( $date ) );
             $map[$date] = (int)($avg * 100);
         }
