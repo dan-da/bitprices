@@ -12,6 +12,7 @@ require_once dirname(__FILE__) . '/lib/validator/AddressValidator.php';
 use \LinusU\Bitcoin\AddressValidator;
 
 require_once dirname(__FILE__) . '/lib/blockchain_api.php';
+require_once dirname(__FILE__) . '/lib/price_api.php';
 
 define( 'SATOSHI', 100000000 );
 
@@ -97,6 +98,7 @@ class bitprices {
                                       'addr-tx-limit:', 'testnet',
                                       'btcd-rpc-host:', 'btcd-rpc-port:',
                                       'btcd-rpc-user:', 'btcd-rpc-pass:',
+                                      'priceapi:',
                                       'api:', 'insight:',
                                       'list-templates', 'list-cols',
                                       'report-type:', 'cost-method:',
@@ -167,6 +169,11 @@ class bitprices {
         $params['date-end'] = @$params['date-end'] ? strtotime($params['date-end']) : time();
         
         $params['currency'] = strtoupper( @$params['currency'] ) ?: 'USD';
+        $params['priceapi'] = @$params['priceapi'] ?: 'btcaverage';
+        
+        if($params['currency'] == 'bitcoin_com') {
+            throw new Exception("Only USD is supported for bitcoin.com price API");
+        }
         
         $params['format'] = @$params['format'] ?: 'txt';
 
@@ -461,6 +468,7 @@ class bitprices {
     --date-end=<date>    Look for transactions until date. default = now.
     
     --currency=<curr>    symbol supported by bitcoinaverage.com.  default = USD.
+    --priceapi=<api>     btcaverage|bitcoin_com.  default=btcaverage
     
     --report-type=<type> tx | schedule_d | matrix.    default=tx
                            options --direction, --cols, --list-templates,
@@ -624,8 +632,12 @@ END;
       */
     protected function get_historic_price( $currency, $timestamp ) {
         $date = gmdate( 'Y-m-d', $timestamp );
+
+        $params = $this->get_params();
+        $priceapi = $params['priceapi'];
         
-        $map = self::get_historic_prices( $currency );
+        $map = self::get_historic_prices_cached( $priceapi, $currency );
+        
         $price = @$map[$date];
         return $price;
     }
@@ -636,13 +648,15 @@ END;
      */
     protected function get_24_hour_avg_price_cached( $currency ) {
         static $prices = array();
+        $params = $this->get_params();
+        $priceapi = $params['priceapi'];
 
         $price = @$prices[$currency];
         if( $price ) {
             return $price;
         }
 
-        $fname = dirname(__FILE__) . sprintf( '/price_24/24_hour_avg_price.%s.csv', $currency );
+        $fname = dirname(__FILE__) . sprintf( '/price_24/24_hour_avg_price.%s.%s.csv', $priceapi, $currency );
         $max_age = 60 * 60;  // max 1 hour.
         $cache_file_valid = file_exists( $fname ) && time() - filemtime( $fname ) < $max_age;
 
@@ -656,7 +670,7 @@ END;
         $dir = dirname( $fname );
         file_exists($dir) || mkdir( $dir );
 
-        $price = $this->get_24_hour_avg_price( $currency );
+        $price = price_api_factory::instance($priceapi)->get_24_hour_avg_price( $currency );
         
         @unlink( $fname );
         file_put_contents( $fname, serialize($price) );
@@ -667,27 +681,10 @@ END;
     }
 
     /**
-     * retrieves the avg price for currency during the past 24 hours.
-     * TODO: abstract for multiple providers.
-     */
-    protected function get_24_hour_avg_price( $currency ) {
-        
-        $market = 'BTC' . strtoupper($currency);
-        $url_mask = 'https://apiv2.bitcoinaverage.com/indices/global/ticker/%s';
-        $url = sprintf( $url_mask, $market );
-        mylogger()->log( "Retrieving $currency price history from apiv2.bitcoinaverage.com", mylogger::info );
-        $buf = file_get_contents( $url );
-        $data = json_decode( $buf, true );
-        
-        return $data['averages']['day'] * 100;
-    }
-
-    /**
      * retrieves all historic prices for $currency, from cache if present and
      * not stale.  stale is defined as older than 12 hours.
-     * TODO: abstract for multiple providers.
      */
-    protected static function get_historic_prices($currency) {
+    protected static function get_historic_prices_cached( $priceapi, $currency) {
         
         static $maps = array();
         static $downloaded_map = array();
@@ -705,20 +702,18 @@ END;
         
         $market = 'BTC' . strtoupper($currency);
         
-        $fname = dirname(__FILE__) . sprintf( '/price_history/per_day_all_time_history.%s.csv', $market );
+        $fname = dirname(__FILE__) . sprintf( '/price_history/per_day_all_time_history.%s.%s.csv', $priceapi, $market );
         $exists = file_exists( $fname );
         if( $exists ) {
             $file_age = time() - filemtime( $fname );
         }
-        
+
         if( !$exists || $file_age > 60*60*12 ) {
             $dir = dirname( $fname );
             file_exists($dir) || mkdir( $dir );
             
-            $url_mask = 'https://apiv2.bitcoinaverage.com/indices/global/history/%s?period=alltime&format=csv';
-            $url = sprintf( $url_mask, $market );
-            mylogger()->log( "Retrieving $currency price history from $url", mylogger::info );
-            $buf = file_get_contents( $url );
+            $buf = price_api_factory::instance($priceapi)->retrieve_price_history( $currency );
+            
             file_put_contents( $fname, $buf );
             
             $downloaded_map[$currency] = true;
@@ -739,7 +734,8 @@ END;
   
         return $map;
     }
-
+        
+    
     /**
      * shortens a bitcoin address to abc...xyz form.
      */
