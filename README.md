@@ -67,8 +67,8 @@ realized gains, in schedule D format.
 If all addresses from a given wallet are provided (including change addresses)
 then the tool can provide a full and complete report of all wallet transactions.
 
-Daily exchange rates are obtained from bitcoinaverage.com.  All fiat currencies
-supported by bitcoinaverage.com may be reported, not only USD.
+Daily exchange rates are obtained from bitcoinaverage.com by default.  All fiat
+currencies supported by bitcoinaverage.com may be reported, not only USD.
 
 Historic transaction data for each address is obtained from a blockchain API
 service provider, which can be either a third party service or something you
@@ -109,6 +109,20 @@ Therefore, the exact price at the moment of the transaction is not reflected.
 
 For transactions that occurred "Today", the latest 24 hour average value from
 bitcoinaverage.com is used.
+
+# Price History Providers
+
+Two daily price history providers are now supported.  A provider can be indicated using
+the --priceapi flag.
+
+1. bitcoinaverage.com.  This site is preferred when operating, but has sometimes
+given 'prohibited' responses to http requests.  This is the default.
+
+2. index-api.bitcoin.com.  This is another free service that provides daily historical
+pricing data.  A limitation is that historic pricing data is available in USD only.
+Attempting to use any other currency will cause an error message.
+
+Note that prices vary somewhat between history providers.
 
 
 # A note about Fiat Columns
@@ -159,6 +173,7 @@ transactions only, or both types.
     --date-end=<date>    Look for transactions until date. default = now.
     
     --currency=<curr>    symbol supported by bitcoinaverage.com.  default = USD.
+    --priceapi=<api>     btcaverage|bitcoin_com.  default=btcaverage
     
     --report-type=<type> tx | schedule_d | matrix.    default=tx
                            options --direction, --cols, --list-templates,
