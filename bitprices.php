@@ -171,7 +171,7 @@ class bitprices {
         $params['currency'] = strtoupper( @$params['currency'] ) ?: 'USD';
         $params['priceapi'] = @$params['priceapi'] ?: 'btcaverage';
         
-        if($params['currency'] == 'bitcoin_com') {
+        if($params['priceapi'] == 'bitcoin_com' && $params['currency'] != 'USD') {
             throw new Exception("Only USD is supported for bitcoin.com price API");
         }
         
