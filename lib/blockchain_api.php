@@ -211,8 +211,7 @@ class blockchain_api_btcd implements blockchain_api {
         catch( Exception $e ) {
             // code -5 : No information available about transaction
             if( $e->getCode() != -5 ) {
-                mylogger()->log_exception($e);
-                mylogger()->log( "Handled exception while calling btcd::searchrawtransactions.  continuing", mylogger::warning );
+                throw($e);
             }
             $tx_list = [];
         }
